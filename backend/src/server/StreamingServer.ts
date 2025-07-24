@@ -2,7 +2,7 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import { SystemMonitor } from '../monitoring/SystemMonitor';
-import { ConnectionAnalyzer } from '../monitoring/ConnectionAnalyzer';
+import { ConnectionAnalyzer } from '../monitoring/analyzers/ConnectionAnalyzer';
 
 export class StreamingServer {
   private httpServer: express.Application;
@@ -38,7 +38,7 @@ export class StreamingServer {
     const filePath = path.join(__dirname, '../../data/files', filename);
     
     // Log connection details for monitoring
-    this.connectionAnalyzer.logConnection(req.ip, 'file_download', filename);
+    this.connectionAnalyzer.logConnection(req.ip || 'unknown', 'file_download', filename);
 
     if (!fs.existsSync(filePath)) {
       res.status(404).send('File not found');
