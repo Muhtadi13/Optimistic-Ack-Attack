@@ -17,12 +17,6 @@
       "lerna": "^7.0.0",
       "concurrently": "^8.0.0"
     },
-    "workspaces": [
-      "frontend",
-      "backend",
-      "clients/*",
-      "monitoring"
-    ],
     "keywords": ["tcp", "attack", "networking", "security", "education"],
     "author": "Security Research Team",
     "license": "MIT",
