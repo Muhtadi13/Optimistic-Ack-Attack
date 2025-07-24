@@ -3,7 +3,7 @@ import MetricsPanel from './MetricsPanel';
 import StreamingPanel from './StreamingPanel';
 import AttackPanel from './AttackPanel';
 import { useWebSocket } from '../../hooks/useWebSocket';
-import { ServerMetrics } from '../../types/monitoring';
+import type { ServerMetrics } from '../../types/monitoring';
 
 const Dashboard = () => {
   const [metrics, setMetrics] = useState<ServerMetrics | null>(null);

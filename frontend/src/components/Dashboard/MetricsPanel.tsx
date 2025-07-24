@@ -1,5 +1,4 @@
-import React from 'react';
-import { ServerMetrics } from '../../types/monitoring';
+import type { ServerMetrics } from '../../types/monitoring';
 import RealTimeChart from '../Monitoring/RealTimeChart';
 import SystemMetrics from '../Monitoring/SystemMetrics';
 
@@ -7,7 +6,7 @@ interface MetricsPanelProps {
   metrics: ServerMetrics | null;
 }
 
-function MetricsPanel<MetricsPanelProps>({ metrics }){
+function MetricsPanel({ metrics }: MetricsPanelProps) {
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200">
       <div className="px-6 py-4 border-b border-gray-200">

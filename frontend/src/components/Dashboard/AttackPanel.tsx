@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { PlayIcon, StopIcon, CogIcon } from '@heroicons/react/24/outline';
 
 interface AttackPanelProps {
   isServerRunning: boolean;
 }
 
-function AttackPanel<AttackPanelProps>({ isServerRunning }){
+function AttackPanel({ isServerRunning }: AttackPanelProps) {
   const [isAttacking, setIsAttacking] = useState(false);
   const [attackConfig, setAttackConfig] = useState({
     duration: 60,

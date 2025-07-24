@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
-import { PlayIcon, PauseIcon, DocumentArrowDownIcon } from '@heroicons/react/24/outline';
+import { useState } from 'react';
+import { DocumentArrowDownIcon } from '@heroicons/react/24/outline';
 
 interface StreamingPanelProps {
   isServerRunning: boolean;
 }
 
-function StreamingPanel: React.FC<StreamingPanelProps>({ isServerRunning }){
+function StreamingPanel({ isServerRunning }: StreamingPanelProps) {
   const [selectedFile, setSelectedFile] = useState('medium_file.bin');
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
