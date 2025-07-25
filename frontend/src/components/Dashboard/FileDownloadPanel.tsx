@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { DocumentArrowDownIcon } from '@heroicons/react/24/outline';
 
-interface StreamingPanelProps {
+interface FileDownloadPanelProps {
   isServerRunning: boolean;
 }
 
-function StreamingPanel({ isServerRunning }: StreamingPanelProps) {
+function FileDownloadPanel({ isServerRunning }: FileDownloadPanelProps) {
   const [selectedFile, setSelectedFile] = useState('medium_file.bin');
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
@@ -136,4 +136,4 @@ function StreamingPanel({ isServerRunning }: StreamingPanelProps) {
   );
 };
 
-export default StreamingPanel;
+export default FileDownloadPanel;

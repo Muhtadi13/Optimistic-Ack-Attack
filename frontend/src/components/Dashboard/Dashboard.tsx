@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import MetricsPanel from './MetricsPanel';
-import StreamingPanel from './StreamingPanel';
+import FileDownloadPanel from './FileDownloadPanel';
+import LiveStreamingPanel from './LiveStreamingPanel';
 import AttackPanel from './AttackPanel';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import type { ServerMetrics } from '../../types/monitoring';
@@ -112,12 +113,13 @@ const Dashboard = () => {
       </div>
       
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+          <div className="xl:col-span-2 space-y-8">
             <MetricsPanel metrics={metrics} />
           </div>
           <div className="space-y-8">
-            <StreamingPanel isServerRunning={isServerRunning} />
+            <FileDownloadPanel isServerRunning={isServerRunning} />
+            <LiveStreamingPanel isServerRunning={isServerRunning} />
             <AttackPanel isServerRunning={isServerRunning} />
           </div>
         </div>
