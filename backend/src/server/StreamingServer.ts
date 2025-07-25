@@ -1,8 +1,12 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { SystemMonitor } from '../monitoring/SystemMonitor';
 import { ConnectionAnalyzer } from '../monitoring/analyzers/ConnectionAnalyzer';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export class StreamingServer {
   private httpServer: express.Application;
@@ -41,6 +45,7 @@ export class StreamingServer {
     this.connectionAnalyzer.logConnection(req.ip || 'unknown', 'file_download', filename);
 
     if (!fs.existsSync(filePath)) {
+      console.error(`File not found: ${filePath}`);
       res.status(404).send('File not found');
       return;
     }
@@ -84,6 +89,10 @@ export class StreamingServer {
 
   private handleStreamPlaylist(req: express.Request, res: express.Response): void {
     const streamId = req.params.streamId;
+    
+    // Log connection for monitoring
+    this.connectionAnalyzer.logConnection(req.ip || 'unknown', 'stream_request', `playlist-${streamId}`);
+    
     // Generate HLS playlist
     const playlist = this.generateHLSPlaylist(streamId);
     res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
@@ -94,6 +103,9 @@ export class StreamingServer {
     const { streamId, segment } = req.params;
     const segmentPath = path.join(__dirname, '../../data/streams', streamId, segment);
     
+    // Log connection for monitoring
+    this.connectionAnalyzer.logConnection(req.ip || 'unknown', 'stream_request', `${streamId}/${segment}`);
+    
     if (fs.existsSync(segmentPath)) {
       res.setHeader('Content-Type', 'video/MP2T');
       fs.createReadStream(segmentPath).pipe(res);
@@ -103,16 +115,36 @@ export class StreamingServer {
   }
 
   private generateHLSPlaylist(streamId: string): string {
-    // Simple HLS playlist generation
-    return `#EXTM3U
+    const streamDir = path.join(__dirname, '../../data/streams', streamId);
+    
+    // Check if stream directory exists
+    if (!fs.existsSync(streamDir)) {
+      return `#EXTM3U
 #EXT-X-VERSION:3
 #EXT-X-TARGETDURATION:10
 #EXT-X-MEDIA-SEQUENCE:0
-#EXTINF:10.0,
-segment000.ts
-#EXTINF:10.0,
-segment001.ts
 #EXT-X-ENDLIST`;
+    }
+
+    // Read available segments
+    const segments = fs.readdirSync(streamDir)
+      .filter(file => file.endsWith('.ts'))
+      .sort();
+
+    let playlist = `#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:10
+#EXT-X-MEDIA-SEQUENCE:0
+`;
+
+    segments.forEach(segment => {
+      playlist += `#EXTINF:10.0,
+${segment}
+`;
+    });
+
+    playlist += '#EXT-X-ENDLIST';
+    return playlist;
   }
 
   public start(): void {

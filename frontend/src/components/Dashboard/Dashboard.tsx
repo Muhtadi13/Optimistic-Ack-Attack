@@ -8,25 +8,48 @@ import type { ServerMetrics } from '../../types/monitoring';
 const Dashboard = () => {
   const [metrics, setMetrics] = useState<ServerMetrics | null>(null);
   const [isServerRunning, setIsServerRunning] = useState(false);
-  const { socket, isConnected } = useWebSocket('ws://localhost:3001');
+  const { socket, isConnected } = useWebSocket('http://localhost:3001');
 
   useEffect(() => {
-    if (socket) {
-      socket.on('metrics-update', (data: ServerMetrics) => {
+    if (socket && isConnected) {
+      console.log('Setting up socket event listeners');
+      
+      const handleMetricsUpdate = (data: ServerMetrics) => {
+        console.log('Received metrics update:', data);
         setMetrics(data);
-      });
+      };
 
-      socket.on('server-status', (status: boolean) => {
+      const handleServerStatus = (status: boolean) => {
+        console.log('Received server status:', status);
         setIsServerRunning(status);
-      });
+      };
+
+      // Subscribe to events
+      socket.on('metrics-update', handleMetricsUpdate);
+      socket.on('server-status', handleServerStatus);
+
+      // Request initial data
+      socket.emit('request-metrics');
+      socket.emit('request-server-status');
+
+      // Cleanup function
+      return () => {
+        socket.off('metrics-update', handleMetricsUpdate);
+        socket.off('server-status', handleServerStatus);
+      };
     }
-  }, [socket]);
+  }, [socket, isConnected]);
 
   const handleStartServer = async () => {
     try {
-      const response = await fetch('/api/server/start', { method: 'POST' });
-      if (response.ok) {
-        setIsServerRunning(true);
+      if (socket) {
+        socket.emit('start-server');
+      } else {
+        // Fallback to HTTP API
+        const response = await fetch('http://localhost:3001/api/server/start', { method: 'POST' });
+        if (response.ok) {
+          setIsServerRunning(true);
+        }
       }
     } catch (error) {
       console.error('Failed to start server:', error);
@@ -35,9 +58,14 @@ const Dashboard = () => {
 
   const handleStopServer = async () => {
     try {
-      const response = await fetch('/api/server/stop', { method: 'POST' });
-      if (response.ok) {
-        setIsServerRunning(false);
+      if (socket) {
+        socket.emit('stop-server');
+      } else {
+        // Fallback to HTTP API
+        const response = await fetch('http://localhost:3001/api/server/stop', { method: 'POST' });
+        if (response.ok) {
+          setIsServerRunning(false);
+        }
       }
     } catch (error) {
       console.error('Failed to stop server:', error);

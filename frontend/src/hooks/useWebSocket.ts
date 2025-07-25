@@ -7,6 +7,8 @@ export const useWebSocket = (url: string) => {
 
   useEffect(() => {
     const socketInstance = io(url);
+    console.log(`Connecting to WebSocket at ${url}`);
+    console.log(socketInstance);
     
     socketInstance.on('connect', () => {
       setIsConnected(true);

@@ -11,9 +11,9 @@ function StreamingPanel({ isServerRunning }: StreamingPanelProps) {
   const [downloadProgress, setDownloadProgress] = useState(0);
 
   const testFiles = [
-    { name: 'small_file.bin', size: '10 MB', description: 'Small test file' },
-    { name: 'medium_file.bin', size: '100 MB', description: 'Medium test file' },
-    { name: 'large_file.bin', size: '500 MB', description: 'Large test file' }
+    { name: 'small-file.txt', size: '10 MB', description: 'Small test file' },
+    { name: 'sample-document.txt', size: '100 MB', description: 'Medium test file' },
+    { name: 'large-file.bin', size: '500 MB', description: 'Large test file' }
   ];
 
   const handleDownload = async () => {
@@ -26,7 +26,7 @@ function StreamingPanel({ isServerRunning }: StreamingPanelProps) {
     setDownloadProgress(0);
 
     try {
-      const response = await fetch(`/api/files/download/${selectedFile}`);
+      const response = await fetch(`http://localhost:3001/download/${selectedFile}`);
       if (!response.ok) throw new Error('Download failed');
 
       const reader = response.body?.getReader();
