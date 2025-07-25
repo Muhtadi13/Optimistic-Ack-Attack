@@ -79,7 +79,7 @@ export class AttackCLI {
       {
         type: 'confirm',
         name: 'enableTransfer',
-        message: 'Enable file transfer during attack (recommended for demonstration)?',
+        message: 'Enable data transfer during attack (recommended for demonstration)?',
         default: true
       }
     ]);
@@ -88,7 +88,7 @@ export class AttackCLI {
     let transferConfig: Partial<AttackConfig> = {
       transferType: 'download',
       transferUrl: undefined,
-      transferSize: undefined,
+      streamId: undefined,
       measureSpeed: false
     };
 
@@ -99,26 +99,25 @@ export class AttackCLI {
           name: 'transferType',
           message: 'Transfer type:',
           choices: [
-            { name: '📥 Download (recommended)', value: 'download' },
-            { name: '📤 Upload', value: 'upload' },
-            { name: '📺 Streaming', value: 'streaming' }
+            { name: '📥 File Download (recommended)', value: 'download' },
+            { name: '📺 HLS Video Streaming', value: 'streaming' }
           ],
           default: 'download'
         },
         {
           type: 'input',
           name: 'transferUrl',
-          message: 'Transfer URL (leave empty for auto):',
+          message: 'Download URL (leave empty for auto):',
           default: '',
-          when: (answers) => answers.transferType !== 'upload'
+          when: (answers) => answers.transferType === 'download'
         },
         {
-          type: 'number',
-          name: 'transferSize',
-          message: 'Upload size (MB):',
-          default: 10,
-          when: (answers) => answers.transferType === 'upload',
-          filter: (input) => input * 1024 * 1024 // Convert to bytes
+          type: 'input',
+          name: 'streamId',
+          message: 'Stream ID:',
+          default: 'sample-stream',
+          when: (answers) => answers.transferType === 'streaming',
+          validate: (input) => input.length > 0 || 'Stream ID is required'
         },
         {
           type: 'confirm',
@@ -134,28 +133,28 @@ export class AttackCLI {
         type: 'number',
         name: 'attackDuration',
         message: 'Attack Duration (seconds):',
-        default: answers.enableTransfer ? 60 : 30,
+        default: answers.enableTransfer ? (transferConfig.transferType === 'streaming' ? 120 : 60) : 30,
         validate: (input) => input > 0 || 'Duration must be positive'
       },
       {
         type: 'number',
         name: 'packetInterval',
         message: 'Packet Interval (ms):',
-        default: 50,
+        default: transferConfig.transferType === 'streaming' ? 25 : 50, // Faster for streaming
         validate: (input) => input > 0 || 'Interval must be positive'
       },
       {
         type: 'number',
         name: 'ackAdvanceSize',
         message: 'ACK Advance Size (bytes):',
-        default: 8760, // 6 * MSS for more aggressive attack
+        default: transferConfig.transferType === 'streaming' ? 17520 : 8760, // 2x for streaming
         validate: (input) => input > 0 || 'Size must be positive'
       },
       {
         type: 'number',
         name: 'windowScale',
         message: 'Window Scale Factor:',
-        default: 2.0,
+        default: transferConfig.transferType === 'streaming' ? 3.0 : 2.0, // Higher for streaming
         validate: (input) => (input > 0 && input <= 4) || 'Scale should be between 1-4'
       }
     ]);
@@ -170,25 +169,60 @@ export class AttackCLI {
   }
 
   private async runQuickDemo(): Promise<void> {
-    console.log(chalk.cyan('\n🚀 Starting Quick Demo with File Transfer...\n'));
+    console.log(chalk.cyan('\n🚀 Starting Quick Demo...\n'));
     
-    const config: AttackConfig = {
-      targetHost: '127.0.0.1',
-      targetPort: 3001,
-      attackDuration: 45,
-      packetInterval: 50,
-      ackAdvanceSize: 8760,
-      windowScale: 2.0,
-      enableTransfer: true,
-      transferType: 'download',
-      transferUrl: 'http://127.0.0.1:3001/download/xl.dat',
-      measureSpeed: true
-    };
+    const demoType = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'type',
+        message: 'Choose demo type:',
+        choices: [
+          { name: '📥 File Download Demo', value: 'download' },
+          { name: '📺 Video Streaming Demo', value: 'streaming' }
+        ],
+        default: 'download'
+      }
+    ]);
 
-    console.log(chalk.yellow('Demo configuration:'));
-    console.log(chalk.white(`  Target: ${config.targetHost}:${config.targetPort}`));
-    console.log(chalk.white(`  Transfer: ${config.transferUrl}`));
-    console.log(chalk.white(`  Duration: ${config.attackDuration}s with speed measurement\n`));
+    let config: AttackConfig;
+
+    if (demoType.type === 'download') {
+      config = {
+        targetHost: '127.0.0.1',
+        targetPort: 3001,
+        attackDuration: 45,
+        packetInterval: 50,
+        ackAdvanceSize: 8760,
+        windowScale: 2.0,
+        enableTransfer: true,
+        transferType: 'download',
+        transferUrl: 'http://127.0.0.1:3001/download/xl.dat',
+        measureSpeed: true
+      };
+
+      console.log(chalk.yellow('File Download Demo Configuration:'));
+      console.log(chalk.white(`  Target: ${config.targetHost}:${config.targetPort}`));
+      console.log(chalk.white(`  File: ${config.transferUrl}`));
+      console.log(chalk.white(`  Duration: ${config.attackDuration}s with speed measurement\n`));
+    } else {
+      config = {
+        targetHost: '127.0.0.1',
+        targetPort: 3001,
+        attackDuration: 90,
+        packetInterval: 25,
+        ackAdvanceSize: 17520,
+        windowScale: 3.0,
+        enableTransfer: true,
+        transferType: 'streaming',
+        streamId: 'demo-stream',
+        measureSpeed: true
+      };
+
+      console.log(chalk.yellow('Video Streaming Demo Configuration:'));
+      console.log(chalk.white(`  Target: ${config.targetHost}:${config.targetPort}`));
+      console.log(chalk.white(`  Stream: ${config.streamId}`));
+      console.log(chalk.white(`  Duration: ${config.attackDuration}s with speed measurement\n`));
+    }
 
     await this.executeAttack(config);
   }
@@ -239,8 +273,13 @@ export class AttackCLI {
       colWidths: [25, 30]
     });
 
+    // Get transfer type for display
+    const transferType = this.attacker.getConfig?.()?.transferType || 'unknown';
+    const transferIcon = transferType === 'streaming' ? '📺' : '📥';
+    const transferLabel = transferType === 'streaming' ? 'STREAMING' : 'DOWNLOADING';
+
     table.push(
-      ['Status', metrics.transferActive ? chalk.yellow('🔄 TRANSFERRING') : (this.attacker.isActive() ? chalk.red('⚔️ ATTACKING') : chalk.gray('⏸️ IDLE'))],
+      ['Status', metrics.transferActive ? chalk.yellow(`${transferIcon} ${transferLabel}`) : (this.attacker.isActive() ? chalk.red('⚔️ ATTACKING') : chalk.gray('⏸️ IDLE'))],
       ['Packets Sent', chalk.cyan(metrics.packetsPressed.toLocaleString())],
       ['Successful ACKs', chalk.green(metrics.successfulAcks.toLocaleString())],
       ['Data Transferred', chalk.blue(this.formatBytes(metrics.totalDataTransferred))],

