@@ -1,92 +1,66 @@
-import inquirer from 'inquirer';
 import chalk from 'chalk';
+import inquirer from 'inquirer';
 import Table from 'cli-table3';
 import { OptimisticACKAttacker, AttackConfig } from './OptimisticACKAttacker';
-import { NetworkMonitor } from './NetworkMonitor';
 
-class AttackCLI {
+export class AttackCLI {
   private attacker: OptimisticACKAttacker | null = null;
-  private networkMonitor: NetworkMonitor;
-  private metricsInterval: NodeJS.Timeout | null = null;
 
-  constructor() {
-    this.networkMonitor = new NetworkMonitor();
-    this.displayBanner();
-  }
+  public async start(): Promise<void> {
+    console.log(chalk.red.bold('\n🔥 OPTIMISTIC ACK ATTACK TOOL 🔥\n'));
+    console.log(chalk.yellow('⚠️  Educational Purpose Only - Use Responsibly ⚠️\n'));
 
-  private displayBanner(): void {
-    console.clear();
-    console.log(chalk.red.bold(`
-╔══════════════════════════════════════════════════════════════╗
-║                                                              ║
-║            🔥 OPTIMISTIC ACK ATTACK TOOL 🔥                 ║
-║                                                              ║
-║                    Educational Use Only                      ║
-║                                                              ║
-╚══════════════════════════════════════════════════════════════╝
-    `));
-    console.log(chalk.yellow('⚠️  WARNING: This tool is for educational and research purposes only!'));
-    console.log(chalk.yellow('⚠️  Do not use against systems you do not own or have permission to test.\n'));
-  }
-
-  public async run(): Promise<void> {
-    try {
-      const action = await this.getMainMenuChoice();
+    while (true) {
+      const action = await this.getMainAction();
       
       switch (action) {
-        case 'attack':
-          await this.runAttack();
+        case 'configure_attack':
+          await this.configureAndExecuteAttack();
           break;
-        case 'test':
-          await this.testConnection();
-          break;
-        case 'monitor':
-          await this.monitorNetwork();
-          break;
-        case 'ui':
-          await this.launchUI();
+        case 'quick_demo':
+          await this.runQuickDemo();
           break;
         case 'exit':
-          console.log(chalk.green('Goodbye!'));
+          console.log(chalk.cyan('\n👋 Goodbye!\n'));
           process.exit(0);
-          break;
       }
-    } catch (error) {
-      console.error(chalk.red('Error:'), error);
-      process.exit(1);
     }
   }
 
-  private async getMainMenuChoice(): Promise<string> {
+  private async getMainAction(): Promise<string> {
     const { action } = await inquirer.prompt([
       {
         type: 'list',
         name: 'action',
         message: 'What would you like to do?',
         choices: [
-          { name: '🚀 Launch Optimistic ACK Attack', value: 'attack' },
-          { name: '🔗 Test Target Connection', value: 'test' },
-          { name: '📊 Monitor Network Performance', value: 'monitor' },
-          { name: '🌐 Launch Web UI', value: 'ui' },
-          { name: '❌ Exit', value: 'exit' }
+          {
+            name: '⚔️  Configure & Execute Attack',
+            value: 'configure_attack'
+          },
+          {
+            name: '🚀 Quick Demo (with file transfer)',
+            value: 'quick_demo'
+          },
+          {
+            name: '🚪 Exit',
+            value: 'exit'
+          }
         ]
       }
     ]);
+    
     return action;
   }
 
-  private async launchUI(): Promise<void> {
-    console.log(chalk.cyan('\n🌐 Launching Web UI...'));
-    console.log(chalk.green('The web interface will open at: http://localhost:5173'));
-    console.log(chalk.yellow('Note: Run "npm run dev:ui" in another terminal to start the web interface.'));
+  private async configureAndExecuteAttack(): Promise<void> {
+    console.log(chalk.cyan('\n📋 Configure Attack Parameters:\n'));
     
-    await this.pressAnyKey();
-    return this.run();
+    const config = await this.getAttackConfig();
+    await this.executeAttack(config);
   }
 
   private async getAttackConfig(): Promise<AttackConfig> {
-    console.log(chalk.cyan('\n📋 Configure Attack Parameters:\n'));
-    
     const answers = await inquirer.prompt([
       {
         type: 'input',
@@ -103,249 +77,234 @@ class AttackCLI {
         validate: (input) => (input > 0 && input <= 65535) || 'Port must be between 1-65535'
       },
       {
+        type: 'confirm',
+        name: 'enableTransfer',
+        message: 'Enable file transfer during attack (recommended for demonstration)?',
+        default: true
+      }
+    ]);
+
+    // Initialize with default values
+    let transferConfig: Partial<AttackConfig> = {
+      transferType: 'download',
+      transferUrl: undefined,
+      transferSize: undefined,
+      measureSpeed: false
+    };
+
+    if (answers.enableTransfer) {
+      transferConfig = await inquirer.prompt([
+        {
+          type: 'list',
+          name: 'transferType',
+          message: 'Transfer type:',
+          choices: [
+            { name: '📥 Download (recommended)', value: 'download' },
+            { name: '📤 Upload', value: 'upload' },
+            { name: '📺 Streaming', value: 'streaming' }
+          ],
+          default: 'download'
+        },
+        {
+          type: 'input',
+          name: 'transferUrl',
+          message: 'Transfer URL (leave empty for auto):',
+          default: '',
+          when: (answers) => answers.transferType !== 'upload'
+        },
+        {
+          type: 'number',
+          name: 'transferSize',
+          message: 'Upload size (MB):',
+          default: 10,
+          when: (answers) => answers.transferType === 'upload',
+          filter: (input) => input * 1024 * 1024 // Convert to bytes
+        },
+        {
+          type: 'confirm',
+          name: 'measureSpeed',
+          message: 'Measure speed improvement (baseline vs attack)?',
+          default: true
+        }
+      ]);
+    }
+
+    const advancedConfig = await inquirer.prompt([
+      {
         type: 'number',
         name: 'attackDuration',
         message: 'Attack Duration (seconds):',
-        default: 30,
+        default: answers.enableTransfer ? 60 : 30,
         validate: (input) => input > 0 || 'Duration must be positive'
       },
       {
         type: 'number',
         name: 'packetInterval',
         message: 'Packet Interval (ms):',
-        default: 100,
+        default: 50,
         validate: (input) => input > 0 || 'Interval must be positive'
       },
       {
         type: 'number',
         name: 'ackAdvanceSize',
         message: 'ACK Advance Size (bytes):',
-        default: 1460,
+        default: 8760, // 6 * MSS for more aggressive attack
         validate: (input) => input > 0 || 'Size must be positive'
       },
       {
         type: 'number',
         name: 'windowScale',
-        message: 'Window Scale Factor (1-2 recommended):',
-        default: 1.5,
-        validate: (input) => (input > 0 && input <= 2) || 'Scale should be between 1-2 for safety'
+        message: 'Window Scale Factor:',
+        default: 2.0,
+        validate: (input) => (input > 0 && input <= 4) || 'Scale should be between 1-4'
       }
     ]);
 
-    return answers as AttackConfig;
+    return {
+      ...answers,
+      ...transferConfig,
+      ...advancedConfig,
+      enableTransfer: answers.enableTransfer,
+      measureSpeed: transferConfig.measureSpeed ?? false
+    } as AttackConfig;
   }
 
-  private async runAttack(): Promise<void> {
-    const config = await this.getAttackConfig();
+  private async runQuickDemo(): Promise<void> {
+    console.log(chalk.cyan('\n🚀 Starting Quick Demo with File Transfer...\n'));
     
-    console.log(chalk.yellow('\n⚡ Preparing attack...'));
-    
-    // Display configuration
-    const configTable = new Table({
-      head: [chalk.cyan('Parameter'), chalk.cyan('Value')],
-      colWidths: [20, 20]
-    });
-    
-    configTable.push(
-      ['Target', `${config.targetHost}:${config.targetPort}`],
-      ['Duration', `${config.attackDuration}s`],
-      ['Interval', `${config.packetInterval}ms`],
-      ['ACK Advance', `${config.ackAdvanceSize} bytes`],
-      ['Window Scale', `${config.windowScale}x`]
-    );
-    
-    console.log(configTable.toString());
-    
-    const { confirm } = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'confirm',
-        message: chalk.red('⚠️  Are you sure you want to proceed with the attack?'),
-        default: false
-      }
-    ]);
-    
-    if (!confirm) {
-      console.log(chalk.yellow('Attack cancelled.'));
-      return this.run();
-    }
-    
+    const config: AttackConfig = {
+      targetHost: '127.0.0.1',
+      targetPort: 3001,
+      attackDuration: 45,
+      packetInterval: 50,
+      ackAdvanceSize: 8760,
+      windowScale: 2.0,
+      enableTransfer: true,
+      transferType: 'download',
+      transferUrl: 'http://127.0.0.1:3001/download/xl.dat',
+      measureSpeed: true
+    };
+
+    console.log(chalk.yellow('Demo configuration:'));
+    console.log(chalk.white(`  Target: ${config.targetHost}:${config.targetPort}`));
+    console.log(chalk.white(`  Transfer: ${config.transferUrl}`));
+    console.log(chalk.white(`  Duration: ${config.attackDuration}s with speed measurement\n`));
+
+    await this.executeAttack(config);
+  }
+
+  private async executeAttack(config: AttackConfig): Promise<void> {
     try {
       this.attacker = new OptimisticACKAttacker(config);
       
-      console.log(chalk.green('\n🚀 Starting Optimistic ACK Attack...\n'));
+      // Setup interrupt handler
+      process.on('SIGINT', () => {
+        console.log(chalk.yellow('\n⏹️  Attack interrupted by user'));
+        this.stopAttack();
+      });
+
+      console.log(chalk.green('\n▶️  Starting attack...\n'));
       
-      // Start real-time metrics display
-      this.startMetricsDisplay();
-      
+      // Show real-time metrics
+      const metricsInterval = setInterval(() => {
+        this.displayRealTimeMetrics();
+      }, 2000);
+
       await this.attacker.executeAttack();
       
-      console.log(chalk.green('\n✅ Attack completed successfully!'));
+      clearInterval(metricsInterval);
+      console.log(chalk.green('\n✅ Attack completed successfully!\n'));
+      
+      this.displayFinalResults();
       
     } catch (error) {
       console.error(chalk.red('\n❌ Attack failed:'), error);
     } finally {
-      this.stopMetricsDisplay();
-      await this.pressAnyKey();
-      return this.run();
+      this.attacker = null;
     }
   }
 
-  private async testConnection(): Promise<void> {
-    const { host, port } = await inquirer.prompt([
-      {
-        type: 'input',
-        name: 'host',
-        message: 'Target Host:',
-        default: '127.0.0.1'
-      },
-      {
-        type: 'number',
-        name: 'port',
-        message: 'Target Port:',
-        default: 3001
-      }
-    ]);
+  private displayRealTimeMetrics(): void {
+    if (!this.attacker) return;
 
-    console.log(chalk.yellow(`\n🔗 Testing connection to ${host}:${port}...`));
+    const metrics = this.attacker.getMetrics();
     
-    try {
-      // Test both HTTP and TCP connections
-      const fetch = (await import('node-fetch')).default;
-      
-      // Test HTTP endpoint
-      try {
-        const response = await fetch(`http://${host}:${port}/health`, { timeout: 5000 });
-        console.log(chalk.green(`✅ HTTP connection successful (Status: ${response.status})`));
-      } catch (error) {
-        console.log(chalk.yellow('⚠️  HTTP endpoint not available'));
-      }
-      
-      // Test TCP connection
-      const net = await import('net');
-      const socket = new net.Socket();
-      
-      await new Promise((resolve, reject) => {
-        socket.setTimeout(5000);
-        
-        socket.connect(port, host, () => {
-          console.log(chalk.green('✅ TCP connection successful'));
-          socket.destroy();
-          resolve(true);
-        });
-        
-        socket.on('error', reject);
-        socket.on('timeout', () => reject(new Error('Connection timeout')));
-      });
-      
-    } catch (error) {
-      console.error(chalk.red('❌ Connection failed:'), error);
-    }
+    // Clear screen and show metrics
+    process.stdout.write('\x1Bc'); // Clear screen
     
-    await this.pressAnyKey();
-    return this.run();
-  }
-
-  private async monitorNetwork(): Promise<void> {
-    console.log(chalk.cyan('\n📊 Network Performance Monitor'));
-    console.log(chalk.gray('Press Ctrl+C to stop monitoring\n'));
+    console.log(chalk.red.bold('🔥 OPTIMISTIC ACK ATTACK - LIVE METRICS 🔥\n'));
     
-    const metricsTable = new Table({
-      head: [
-        chalk.cyan('Metric'),
-        chalk.cyan('Value'),
-        chalk.cyan('Unit')
-      ],
-      colWidths: [20, 15, 10]
+    const table = new Table({
+      head: ['Metric', 'Value'],
+      colWidths: [25, 30]
     });
-    
-    const monitorInterval = setInterval(() => {
-      const metrics = this.networkMonitor.getMetrics();
-      
-      console.clear();
-      this.displayBanner();
-      console.log(chalk.cyan('\n📊 Real-time Network Metrics:\n'));
-      
-      metricsTable.length = 0; // Clear table
-      metricsTable.push(
-        ['Download Speed', this.formatSpeed(metrics.downloadSpeed), 'B/s'],
-        ['Upload Speed', this.formatSpeed(metrics.uploadSpeed), 'B/s'],
-        ['Latency', metrics.latency.toFixed(1), 'ms'],
-        ['Bandwidth', this.formatSpeed(metrics.bandwidth), 'B/s'],
-        ['Packets/sec', metrics.packetsPerSecond.toFixed(0), 'pps']
-      );
-      
-      console.log(metricsTable.toString());
-      console.log(chalk.gray('\nPress Ctrl+C to stop monitoring...'));
-      
-    }, 1000);
-    
-    // Handle Ctrl+C
-    process.on('SIGINT', () => {
-      clearInterval(monitorInterval);
-      console.log(chalk.yellow('\n\n📊 Network monitoring stopped.'));
-      this.run();
-    });
-  }
 
-  private startMetricsDisplay(): void {
-    this.metricsInterval = setInterval(() => {
-      if (!this.attacker) return;
-      
-      const metrics = this.attacker.getMetrics();
-      const networkMetrics = this.networkMonitor.getMetrics();
-      
-      console.clear();
-      console.log(chalk.red.bold('🔥 ATTACK IN PROGRESS 🔥\n'));
-      
-      const attackTable = new Table({
-        head: [chalk.red('Attack Metric'), chalk.red('Value')],
-        colWidths: [25, 20]
-      });
-      
-      attackTable.push(
-        ['Packets Sent', metrics.packetsPressed.toLocaleString()],
-        ['Successful ACKs', metrics.successfulAcks.toLocaleString()],
-        ['Connection Status', metrics.connectionEstablished ? '✅ ACTIVE' : '❌ FAILED'],
-        ['Current Speed', this.formatSpeed(metrics.currentSpeed)],
-        ['Data Transferred', this.formatBytes(metrics.totalDataTransferred)],
-        ['Elapsed Time', `${((Date.now() - metrics.attackStartTime) / 1000).toFixed(1)}s`]
-      );
-      
-      console.log(attackTable.toString());
-      
-      const networkTable = new Table({
-        head: [chalk.cyan('Network Metric'), chalk.cyan('Value')],
-        colWidths: [25, 20]
-      });
-      
-      networkTable.push(
-        ['Download Speed', this.formatSpeed(networkMetrics.downloadSpeed)],
-        ['Upload Speed', this.formatSpeed(networkMetrics.uploadSpeed)],
-        ['Latency', `${networkMetrics.latency.toFixed(1)}ms`],
-        ['Packets/sec', networkMetrics.packetsPerSecond.toFixed(0)]
-      );
-      
-      console.log('\n' + networkTable.toString());
-      
-    }, 1000);
-  }
+    table.push(
+      ['Status', metrics.transferActive ? chalk.yellow('🔄 TRANSFERRING') : (this.attacker.isActive() ? chalk.red('⚔️ ATTACKING') : chalk.gray('⏸️ IDLE'))],
+      ['Packets Sent', chalk.cyan(metrics.packetsPressed.toLocaleString())],
+      ['Successful ACKs', chalk.green(metrics.successfulAcks.toLocaleString())],
+      ['Data Transferred', chalk.blue(this.formatBytes(metrics.totalDataTransferred))],
+      ['Current Speed', chalk.magenta(this.formatSpeed(metrics.currentSpeed))],
+      ['Transfer Progress', metrics.transferActive ? chalk.yellow(`${metrics.transferProgress.toFixed(1)}%`) : 'N/A'],
+      ['Connection', metrics.connectionEstablished ? chalk.green('✅ ESTABLISHED') : chalk.red('❌ DISCONNECTED')]
+    );
 
-  private stopMetricsDisplay(): void {
-    if (this.metricsInterval) {
-      clearInterval(this.metricsInterval);
-      this.metricsInterval = null;
+    if (metrics.baselineSpeed > 0) {
+      table.push(['Baseline Speed', chalk.white(this.formatSpeed(metrics.baselineSpeed))]);
     }
+    
+    if (metrics.attackSpeed > 0) {
+      table.push(['Attack Speed', chalk.white(this.formatSpeed(metrics.attackSpeed))]);
+    }
+    
+    if (metrics.speedImprovement !== 0) {
+      const color = metrics.speedImprovement > 0 ? chalk.green : chalk.red;
+      table.push(['Speed Improvement', color(`${metrics.speedImprovement > 0 ? '+' : ''}${metrics.speedImprovement.toFixed(1)}%`)]);
+    }
+
+    console.log(table.toString());
+    console.log(chalk.gray('\nPress Ctrl+C to stop the attack\n'));
   }
 
-  private async pressAnyKey(): Promise<void> {
-    await inquirer.prompt([
-      {
-        type: 'input',
-        name: 'continue',
-        message: 'Press Enter to continue...'
+  private displayFinalResults(): void {
+    if (!this.attacker) return;
+
+    const metrics = this.attacker.getMetrics();
+    const duration = (Date.now() - metrics.attackStartTime) / 1000;
+
+    console.log(chalk.cyan('📊 FINAL ATTACK RESULTS:\n'));
+    
+    const resultsTable = new Table({
+      head: ['Metric', 'Value'],
+      colWidths: [30, 40]
+    });
+
+    resultsTable.push(
+      ['Total Duration', `${duration.toFixed(1)} seconds`],
+      ['Packets Sent', metrics.packetsPressed.toLocaleString()],
+      ['Success Rate', `${((metrics.successfulAcks / metrics.packetsPressed) * 100).toFixed(1)}%`],
+      ['Data Transferred', this.formatBytes(metrics.totalDataTransferred)],
+      ['Average Speed', this.formatSpeed(metrics.currentSpeed)]
+    );
+
+    if (metrics.baselineSpeed > 0 && metrics.attackSpeed > 0) {
+      resultsTable.push(
+        ['─────────────────────', '─────────────────────────────────'],
+        ['Baseline Speed', this.formatSpeed(metrics.baselineSpeed)],
+        ['Attack Speed', this.formatSpeed(metrics.attackSpeed)],
+        ['Speed Improvement', `${metrics.speedImprovement > 0 ? '+' : ''}${metrics.speedImprovement.toFixed(1)}%`]
+      );
+
+      if (metrics.speedImprovement > 5) {
+        resultsTable.push(['Result', chalk.green('🎯 SUCCESSFUL ATTACK!')]);
+      } else if (metrics.speedImprovement > 0) {
+        resultsTable.push(['Result', chalk.yellow('⚠️ Marginal improvement')]);
+      } else {
+        resultsTable.push(['Result', chalk.red('❌ No improvement detected')]);
       }
-    ]);
+    }
+
+    console.log(resultsTable.toString());
   }
 
   private formatBytes(bytes: number): string {
@@ -359,8 +318,18 @@ class AttackCLI {
   private formatSpeed(bytesPerSecond: number): string {
     return this.formatBytes(bytesPerSecond) + '/s';
   }
+
+  private stopAttack(): void {
+    if (this.attacker) {
+      this.attacker.stopAttack();
+      this.displayFinalResults();
+      process.exit(0);
+    }
+  }
 }
 
-// Start the CLI application
-const cli = new AttackCLI();
-cli.run().catch(console.error);
+// Start the CLI
+if (require.main === module) {
+  const cli = new AttackCLI();
+  cli.start().catch(console.error);
+}

@@ -24,6 +24,8 @@ export class StreamingServer {
   private setupRoutes(): void {
     // File download endpoint
     this.httpServer.get('/download/:filename', (req, res) => {
+      // console.log('Got a download rquest');
+      // console.log(req);
       this.handleFileDownload(req, res);
     });
 
