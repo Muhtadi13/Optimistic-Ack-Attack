@@ -199,6 +199,26 @@ export const useNetworkMonitoring = () => {
     });
   }, [networkMetrics]);
 
+    // Clear all metrics function
+    const clearAllMetrics = useCallback(() => {
+    console.log('🧹 Clearing all network monitoring metrics');
+    
+    // Reset all state
+    setNetworkMetrics(null);
+    setStreamingMetrics(null);
+    setDownloadMetrics(null);
+    setOptimisticAckMetrics(null);
+    
+    // Reset all refs
+    downloadStartTime.current = 0;
+    downloadedBytes.current = 0;
+    speedHistory.current = [];
+    latencyHistory.current = [];
+    
+    console.log('✅ All metrics cleared successfully');
+    }, []);
+    
+
   return {
     networkMetrics,
     streamingMetrics,
@@ -209,7 +229,8 @@ export const useNetworkMonitoring = () => {
     updateStreamingMetrics,
     simulateOptimisticAck,
     startDownloadMonitoring,
-    updateDownloadProgress
+    updateDownloadProgress,
+    clearAllMetrics
   };
 };
 

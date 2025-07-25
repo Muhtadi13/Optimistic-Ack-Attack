@@ -13,7 +13,7 @@ function FileDownloadPanel({ isServerRunning }: FileDownloadPanelProps) {
   const testFiles = [
     { name: 'small-file.txt', size: '10 MB', description: 'Small test file' },
     { name: 'sample-document.txt', size: '100 MB', description: 'Medium test file' },
-    { name: 'large-file.bin', size: '500 MB', description: 'Large test file' }
+    { name: 'xl.dat', size: '500 MB', description: 'Large test file' }
   ];
 
   const handleDownload = async () => {
