@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import MetricsPanel from './MetricsPanel';
 import FileDownloadPanel from './FileDownloadPanel';
 import LiveStreamingPanel from './LiveStreamingPanel';
+import NetworkMonitoringPanel from './NetworkMonitoringPanel';
 import AttackPanel from './AttackPanel';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import type { ServerMetrics } from '../../types/monitoring';
@@ -118,9 +119,10 @@ const Dashboard = () => {
             <MetricsPanel metrics={metrics} />
           </div>
           <div className="space-y-8">
+            <NetworkMonitoringPanel isServerRunning={isServerRunning} />
             <FileDownloadPanel isServerRunning={isServerRunning} />
             <LiveStreamingPanel isServerRunning={isServerRunning} />
-            <AttackPanel isServerRunning={isServerRunning} />
+            {/* <AttackPanel isServerRunning={isServerRunning} /> */}
           </div>
         </div>
       </div>
