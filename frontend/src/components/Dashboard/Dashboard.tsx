@@ -119,10 +119,9 @@ const Dashboard = () => {
             <MetricsPanel metrics={metrics} />
           </div>
           <div className="space-y-8">
-            <NetworkMonitoringPanel isServerRunning={isServerRunning} />
+            {/* <NetworkMonitoringPanel isServerRunning={isServerRunning} /> */}
             <FileDownloadPanel isServerRunning={isServerRunning} />
             <LiveStreamingPanel isServerRunning={isServerRunning} />
-            {/* <AttackPanel isServerRunning={isServerRunning} /> */}
           </div>
         </div>
       </div>

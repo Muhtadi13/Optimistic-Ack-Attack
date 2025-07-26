@@ -12,6 +12,19 @@ export const useNetworkMonitoring = () => {
   const speedHistory = useRef<number[]>([]);
   const latencyHistory = useRef<number[]>([]);
 
+  // New state for chunk metrics
+  const [chunkMetrics, setChunkMetrics] = useState<{
+    totalChunks: number;
+    completedChunks: number;
+    chunkSizes: number[];
+    chunkSpeeds: number[];
+  }>({
+    totalChunks: 0,
+    completedChunks: 0,
+    chunkSizes: [],
+    chunkSpeeds: []
+  });
+
   // Network Connection API monitoring
   useEffect(() => {
     const updateConnectionInfo = () => {
@@ -86,8 +99,8 @@ export const useNetworkMonitoring = () => {
     });
   }, []);
 
-  // Update download progress
-  const updateDownloadProgress = useCallback((bytesDownloaded: number) => {
+  // Update download progress with chunk awareness
+  const updateDownloadProgress = useCallback((bytesDownloaded: number, isNewChunk: boolean = false) => {
     downloadedBytes.current = bytesDownloaded;
     const elapsed = (Date.now() - downloadStartTime.current) / 1000;
     const speed = elapsed > 0 ? bytesDownloaded / elapsed : 0;
@@ -104,6 +117,15 @@ export const useNetworkMonitoring = () => {
         eta
       };
     });
+
+    // Track chunk completion
+    if (isNewChunk) {
+      setChunkMetrics(prev => ({
+        ...prev,
+        completedChunks: prev.completedChunks + 1,
+        chunkSpeeds: [...prev.chunkSpeeds, speed].slice(-10) // Keep last 10 speeds
+      }));
+    }
   }, []);
 
   // Monitor fetch requests for automatic speed calculation
@@ -224,6 +246,7 @@ export const useNetworkMonitoring = () => {
     streamingMetrics,
     downloadMetrics,
     optimisticAckMetrics,
+    chunkMetrics, // Add this
     measureLatency,
     monitoredFetch,
     updateStreamingMetrics,
