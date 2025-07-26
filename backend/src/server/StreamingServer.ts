@@ -176,7 +176,7 @@ export class StreamingServer {
     } else {
       // Unprotected endpoints (original behavior)
       this.httpServer.get('/download/:filename', (req, res) => {
-        console.log('⚠️ Download request - NO PROTECTION ACTIVE');
+        // console.log('⚠️ Download request - NO PROTECTION ACTIVE');
         this.handleFileDownload(req, res);
       });
 

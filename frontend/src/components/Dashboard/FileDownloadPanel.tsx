@@ -312,7 +312,7 @@ function FileDownloadPanel({ isServerRunning }: FileDownloadPanelProps) {
       <div className="px-6 py-4 border-b border-gray-200">
         <h2 className="text-lg font-semibold text-gray-900 flex items-center">
           <DocumentArrowDownIcon className="h-5 w-5 mr-2 text-gray-400" />
-          File Download Testing
+          File Download
         </h2>
       </div>
 
@@ -526,14 +526,14 @@ function FileDownloadPanel({ isServerRunning }: FileDownloadPanelProps) {
           </div>
         )}
 
-        {useChunkedDownload && (
+        {/* {useChunkedDownload && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
             <p className="text-sm text-yellow-800">
               💡 <strong>Tip:</strong> Chunked downloads use the same pattern as the optimistic ACK attack. 
               Monitor the Network Performance panel to see how range requests affect transfer speed.
             </p>
           </div>
-        )}
+        )} */}
 
         {downloadComplete && (
           <div className="bg-green-50 border border-green-200 rounded-md p-3">

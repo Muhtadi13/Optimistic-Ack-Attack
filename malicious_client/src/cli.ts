@@ -17,9 +17,6 @@ export class AttackCLI {
         case 'configure_attack':
           await this.configureAndExecuteAttack();
           break;
-        case 'quick_demo':
-          await this.runQuickDemo();
-          break;
         case 'exit':
           console.log(chalk.cyan('\n👋 Goodbye!\n'));
           process.exit(0);
@@ -37,10 +34,6 @@ export class AttackCLI {
           {
             name: '⚔️  Configure & Execute Attack',
             value: 'configure_attack'
-          },
-          {
-            name: '🚀 Quick Demo (with file transfer)',
-            value: 'quick_demo'
           },
           {
             name: '🚪 Exit',
@@ -140,7 +133,7 @@ export class AttackCLI {
         type: 'number',
         name: 'packetInterval',
         message: 'Packet Interval (ms):',
-        default: transferConfig.transferType === 'streaming' ? 25 : 50, // Faster for streaming
+        default: transferConfig.transferType === 'streaming' ? 20 : 45, // Faster for streaming
         validate: (input) => input > 0 || 'Interval must be positive'
       },
       {
@@ -191,7 +184,7 @@ export class AttackCLI {
         targetHost: '127.0.0.1',
         targetPort: 3001,
         attackDuration: 45,
-        packetInterval: 50,
+        packetInterval: 45,
         ackAdvanceSize: 8760,
         windowScale: 2.0,
         enableTransfer: true,
@@ -209,7 +202,7 @@ export class AttackCLI {
         targetHost: '127.0.0.1',
         targetPort: 3001,
         attackDuration: 90,
-        packetInterval: 25,
+        packetInterval: 20,
         ackAdvanceSize: 17520,
         windowScale: 3.0,
         enableTransfer: true,
@@ -247,7 +240,7 @@ export class AttackCLI {
       await this.attacker.executeAttack();
       
       clearInterval(metricsInterval);
-      console.log(chalk.green('\n✅ Attack completed successfully!\n'));
+      // console.log(chalk.green('\n✅ Attack completed successfully!\n'));
       
       this.displayFinalResults();
       
@@ -269,7 +262,7 @@ export class AttackCLI {
     console.log(chalk.red.bold('🔥 OPTIMISTIC ACK ATTACK - LIVE METRICS 🔥\n'));
     
     const table = new Table({
-      head: ['Metric', 'Value'],
+      head: ['Attack Metric', 'Value'],
       colWidths: [25, 30]
     });
 
@@ -279,13 +272,13 @@ export class AttackCLI {
     const transferLabel = transferType === 'streaming' ? 'STREAMING' : 'DOWNLOADING';
 
     table.push(
-      ['Status', metrics.transferActive ? chalk.yellow(`${transferIcon} ${transferLabel}`) : (this.attacker.isActive() ? chalk.red('⚔️ ATTACKING') : chalk.gray('⏸️ IDLE'))],
+      ['Status', metrics.transferActive ? chalk.yellow(`${transferIcon} ${transferLabel}`) : (this.attacker.isActive() && metrics.connectionEstablished ? chalk.red('⚔️ ATTACKING') : chalk.gray('⏸️ IDLE'))],
       ['Packets Sent', chalk.cyan(metrics.packetsPressed.toLocaleString())],
       ['Successful ACKs', chalk.green(metrics.successfulAcks.toLocaleString())],
       ['Data Transferred', chalk.blue(this.formatBytes(metrics.totalDataTransferred))],
       ['Current Speed', chalk.magenta(this.formatSpeed(metrics.currentSpeed))],
       ['Transfer Progress', metrics.transferActive ? chalk.yellow(`${metrics.transferProgress.toFixed(1)}%`) : 'N/A'],
-      ['Connection', metrics.connectionEstablished ? chalk.green('✅ ESTABLISHED') : chalk.red('❌ DISCONNECTED')]
+      ['Attacker Connection', metrics.connectionEstablished ? chalk.green('✅ ESTABLISHED') : chalk.red('❌ DISCONNECTED')]
     );
 
     if (metrics.baselineSpeed > 0) {
@@ -327,6 +320,7 @@ export class AttackCLI {
     );
 
     if (metrics.baselineSpeed > 0 && metrics.attackSpeed > 0) {
+      console.log(chalk.green('\n✅ Attack completed successfully!\n'));
       resultsTable.push(
         ['─────────────────────', '─────────────────────────────────'],
         ['Baseline Speed', this.formatSpeed(metrics.baselineSpeed)],
@@ -341,6 +335,9 @@ export class AttackCLI {
       } else {
         resultsTable.push(['Result', chalk.red('❌ No improvement detected')]);
       }
+    }
+    else{
+      console.log(chalk.redBright('\nAttack Stopped Abruptly\n'));
     }
 
     console.log(resultsTable.toString());

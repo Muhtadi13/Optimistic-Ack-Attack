@@ -2,8 +2,6 @@ import { useState, useEffect } from 'react';
 import MetricsPanel from './MetricsPanel';
 import FileDownloadPanel from './FileDownloadPanel';
 import LiveStreamingPanel from './LiveStreamingPanel';
-import NetworkMonitoringPanel from './NetworkMonitoringPanel';
-import AttackPanel from './AttackPanel';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import type { ServerMetrics } from '../../types/monitoring';
 
@@ -81,11 +79,8 @@ const Dashboard = () => {
           <div className="flex justify-between items-center py-6">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">
-                TCP Attack Analysis Dashboard
+                Streaming Server
               </h1>
-              <p className="mt-1 text-sm text-gray-500">
-                Monitor and analyze Optimistic ACK attacks in real-time
-              </p>
             </div>
             <div className="flex items-center space-x-4">
               <button 

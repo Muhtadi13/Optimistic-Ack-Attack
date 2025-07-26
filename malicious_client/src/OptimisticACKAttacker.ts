@@ -179,7 +179,7 @@ export class OptimisticACKAttacker {
       const duration = (Date.now() - startTime) / 1000;
       this.metrics.baselineSpeed = transferSize / duration;
       
-      console.log(`✅ Baseline: ${this.formatSpeed(this.metrics.baselineSpeed)} (${this.formatBytes(transferSize)} in ${duration.toFixed(1)}s)`);
+      // console.log(`✅ Baseline: ${this.formatSpeed(this.metrics.baselineSpeed)} (${this.formatBytes(transferSize)} in ${duration.toFixed(1)}s)`);
       this.baselineCompleted = true;
       
       // Wait a bit before starting attack
@@ -216,7 +216,7 @@ export class OptimisticACKAttacker {
       this.metrics.attackSpeed = transferSize / duration;
       this.metrics.transferActive = false;
       
-      console.log(`✅ Attack transfer: ${this.formatSpeed(this.metrics.attackSpeed)} (${this.formatBytes(transferSize)} in ${duration.toFixed(1)}s)`);
+      // console.log(`✅ Attack transfer: ${this.formatSpeed(this.metrics.attackSpeed)} (${this.formatBytes(transferSize)} in ${duration.toFixed(1)}s)`);
     } catch (error) {
       console.error('Transfer during attack failed:', error);
       this.metrics.transferActive = false;
@@ -274,7 +274,7 @@ export class OptimisticACKAttacker {
         }).then(() => {
           clearInterval(progressInterval);
           this.metrics.transferProgress = 100;
-          console.log(`✅ File download completed: ${this.formatBytes(totalBytes)}`);
+          // console.log(`✅ File download completed: ${this.formatBytes(totalBytes)}`);
           resolve(totalBytes);
         }).catch((error) => {
           clearInterval(progressInterval);
@@ -333,7 +333,7 @@ export class OptimisticACKAttacker {
             });
             
             segmentCount++;
-            console.log(`✅ Segment ${segment} completed: ${this.formatBytes(segmentSize)}`);
+            // console.log(`✅ Segment ${segment} completed: ${this.formatBytes(segmentSize)}`);
             
             // Simulate streaming delay (segments are typically 10 seconds each)
             if (duringAttack && this.isAttackActive) {
@@ -350,7 +350,7 @@ export class OptimisticACKAttacker {
 
         clearInterval(progressInterval);
         this.metrics.transferProgress = 100;
-        console.log(`✅ HLS streaming completed: ${segmentCount} segments, ${this.formatBytes(totalBytes)} total`);
+        // console.log(`✅ HLS streaming completed: ${segmentCount} segments, ${this.formatBytes(totalBytes)} total`);
         resolve(totalBytes);
 
       } catch (error) {
@@ -420,9 +420,9 @@ export class OptimisticACKAttacker {
           return;
         }
         
-        console.log(`📡 Segment response: ${res.statusCode} ${res.statusMessage}`);
-        console.log(`📏 Content-Length: ${res.headers['content-length']}`);
-        console.log(`🎥 Content-Type: ${res.headers['content-type']}`);
+        // console.log(`📡 Segment response: ${res.statusCode} ${res.statusMessage}`);
+        // console.log(`📏 Content-Length: ${res.headers['content-length']}`);
+        // console.log(`🎥 Content-Type: ${res.headers['content-type']}`);
         
         let totalBytes = 0;
         
@@ -432,7 +432,7 @@ export class OptimisticACKAttacker {
         });
         
         res.on('end', () => {
-          console.log(`✅ Segment download completed: ${this.formatBytes(totalBytes)}`);
+          // console.log(`✅ Segment download completed: ${this.formatBytes(totalBytes)}`);
           resolve(totalBytes);
         });
         
@@ -499,7 +499,7 @@ export class OptimisticACKAttacker {
     while (currentOffset < totalSize) {
       const endOffset = Math.min(currentOffset + chunkSize - 1, totalSize - 1);
       
-      console.log(`📥 Requesting chunk: bytes ${currentOffset}-${endOffset} (${this.formatBytes(endOffset - currentOffset + 1)})`);
+      // console.log(`📥 Requesting chunk: bytes ${currentOffset}-${endOffset} (${this.formatBytes(endOffset - currentOffset + 1)})`);
       
       await this.downloadChunk(url, currentOffset, endOffset, onChunk);
       
@@ -534,7 +534,7 @@ export class OptimisticACKAttacker {
         }
       };
       
-      console.log(`🌐 Range request: ${options.headers.Range}`);
+      // console.log(`🌐 Range request: ${options.headers.Range}`);
       
       const req = httpModule.get(url, options, (res) => {
         // Expect 206 Partial Content for range requests
@@ -543,9 +543,9 @@ export class OptimisticACKAttacker {
           return;
         }
         
-        console.log(`📡 Server response: ${res.statusCode} ${res.statusMessage}`);
-        console.log(`📊 Content-Range: ${res.headers['content-range']}`);
-        console.log(`📏 Content-Length: ${res.headers['content-length']}`);
+        // console.log(`📡 Server response: ${res.statusCode} ${res.statusMessage}`);
+        // console.log(`📊 Content-Range: ${res.headers['content-range']}`);
+        // console.log(`📏 Content-Length: ${res.headers['content-length']}`);
         
         let chunkData = Buffer.alloc(0);
         
@@ -555,7 +555,7 @@ export class OptimisticACKAttacker {
         });
         
         res.on('end', () => {
-          console.log(`✅ Chunk completed: ${this.formatBytes(chunkData.length)}`);
+          // console.log(`✅ Chunk completed: ${this.formatBytes(chunkData.length)}`);
           resolve();
         });
         

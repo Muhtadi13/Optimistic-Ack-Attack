@@ -109,9 +109,9 @@ function SystemMetrics({ metrics }: SystemMetricsProps) {
           </div>
         </div>
         <div className="mt-2">
-          <p className="text-xs text-gray-500">
+          {/* <p className="text-xs text-gray-500">
             {formatBytes(metrics.disk.free)} free of {formatBytes(metrics.disk.total)}
-          </p>
+          </p> */}
           <p className="text-xs text-gray-500 mt-1">
             Uptime: {formatUptime(metrics.uptime)}
           </p>

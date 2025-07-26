@@ -140,7 +140,7 @@ export class RawSocketManager {
       const { stdout, stderr } = await execAsync(command);
       
       if (!stderr.includes('Operation not permitted')) {
-        console.log(`📡 Raw TCP packet sent via hping3: ACK=${packet.ackNumber}`);
+        //console.log(`📡 Raw TCP packet sent via hping3: ACK=${packet.ackNumber}`);
         return true;
       } else {
         console.log('🔒 hping3 requires root privileges, falling back...');
