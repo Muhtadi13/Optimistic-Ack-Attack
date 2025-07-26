@@ -323,7 +323,7 @@ export class AttackCLI {
       ['Packets Sent', metrics.packetsPressed.toLocaleString()],
       ['Success Rate', `${((metrics.successfulAcks / metrics.packetsPressed) * 100).toFixed(1)}%`],
       ['Data Transferred', this.formatBytes(metrics.totalDataTransferred)],
-      ['Average Speed', this.formatSpeed(metrics.currentSpeed)]
+      ['Ack Loop Speed', this.formatSpeed(metrics.currentSpeed)]
     );
 
     if (metrics.baselineSpeed > 0 && metrics.attackSpeed > 0) {
