@@ -2,7 +2,105 @@ import express from 'express';
 import http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
-import { StreamingServer } from './server/StreamingServer.js';
+import { StreamingServer, StreamingServerConfig } from './server/StreamingServer.js';
+
+// Parse command line arguments
+interface CLIArgs {
+  defense: boolean;
+  defenseMode: 'high' | 'medium' | 'low' | 'off';
+  port: number;
+  help: boolean;
+}
+
+function parseArgs(): CLIArgs {
+  const args = process.argv.slice(2);
+  const result: CLIArgs = {
+    defense: true, // Default to enabled
+    defenseMode: 'medium', // Default mode
+    port: 3001, // Default port
+    help: false
+  };
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    
+    switch (arg) {
+      case '--defense':
+      case '-d':
+        const defenseValue = args[i + 1];
+        if (defenseValue === 'false' || defenseValue === 'off' || defenseValue === 'disabled') {
+          result.defense = false;
+          result.defenseMode = 'off';
+        } else if (defenseValue === 'true' || defenseValue === 'on' || defenseValue === 'enabled') {
+          result.defense = true;
+        }
+        i++; // Skip next argument
+        break;
+        
+      case '--defense-mode':
+      case '-dm':
+        const mode = args[i + 1] as 'high' | 'medium' | 'low' | 'off';
+        if (['high', 'medium', 'low', 'off'].includes(mode)) {
+          result.defenseMode = mode;
+          result.defense = mode !== 'off';
+        }
+        i++; // Skip next argument
+        break;
+        
+      case '--port':
+      case '-p':
+        const port = parseInt(args[i + 1]);
+        if (!isNaN(port) && port > 0 && port <= 65535) {
+          result.port = port;
+        }
+        i++; // Skip next argument
+        break;
+        
+      case '--help':
+      case '-h':
+        result.help = true;
+        break;
+        
+      case '--no-defense':
+        result.defense = false;
+        result.defenseMode = 'off';
+        break;
+    }
+  }
+
+  return result;
+}
+
+function showHelp(): void {
+  console.log(`
+🛡️ Optimistic ACK Attack - Backend Server
+
+Usage: npx tsx src/app.ts [options]
+
+Options:
+  --defense, -d <enabled>      Enable/disable defense system (true/false) [default: true]
+  --defense-mode, -dm <mode>   Defense mode (high/medium/low/off) [default: medium]
+  --no-defense                 Disable defense system completely
+  --port, -p <port>           Server port [default: 3001]
+  --help, -h                  Show this help message
+
+Defense Modes:
+  high     - Maximum protection, aggressive thresholds
+  medium   - Balanced protection and performance
+  low      - Minimal protection, performance optimized  
+  off      - No protection (vulnerable to attacks)
+
+Examples:
+  npx tsx src/app.ts                                    # Default: defense enabled, medium mode
+  npx tsx src/app.ts --defense true --defense-mode high # High security mode
+  npx tsx src/app.ts --no-defense                       # No protection (testing)
+  npx tsx src/app.ts -d false                           # Disable defense
+  npx tsx src/app.ts -dm low -p 8080                    # Low defense mode on port 8080
+
+🎯 Test the defense system:
+  curl -H "X-Simulate-Attack: optimistic-ack" http://localhost:3001/download/xl.dat
+`);
+}
 
 class App {
   private app: express.Application;
@@ -11,19 +109,29 @@ class App {
   private streamingServer: StreamingServer;
   private metricsInterval: NodeJS.Timeout | null = null;
   private statusInterval: NodeJS.Timeout | null = null;
+  private config: StreamingServerConfig;
 
-  constructor() {
+  constructor(config: StreamingServerConfig) {
+    this.config = config;
     this.app = express();
     this.server = http.createServer(this.app);
     this.io = new SocketIOServer(this.server, {
       cors: { origin: "*", methods: ["GET", "POST"] }
     });
     
-    this.streamingServer = new StreamingServer();
+    this.streamingServer = new StreamingServer(config);
 
     this.initializeMiddleware();
     this.initializeRoutes();
     this.initializeWebSockets();
+    
+    // Log configuration
+    console.log('🚀 Server initialized with configuration:');
+    console.log(`   Defense System: ${config.enableDefense ? '✅ ENABLED' : '❌ DISABLED'}`);
+    console.log(`   Defense Mode: ${config.defenseMode.toUpperCase()}`);
+    if (!config.enableDefense) {
+      console.log('⚠️  WARNING: Server is vulnerable to optimistic ACK attacks!');
+    }
   }
 
   private initializeMiddleware(): void {
@@ -33,20 +141,10 @@ class App {
   }
 
   private initializeRoutes(): void {
-    // Mount the streaming server routes directly
-    this.app.get('/download/:filename', (req, res) => {
-      this.streamingServer['handleFileDownload'](req, res);
-    });
+    // Mount the streaming server's Express app with all its security middleware
+    this.app.use('/', this.streamingServer.getApp());
 
-    this.app.get('/stream/:streamId/playlist.m3u8', (req, res) => {
-      this.streamingServer['handleStreamPlaylist'](req, res);
-    });
-
-    this.app.get('/stream/:streamId/:segment', (req, res) => {
-      this.streamingServer['handleStreamSegment'](req, res);
-    });
-
-    // Server control endpoints
+    // Server control endpoints (these are additional endpoints for the main app)
     this.app.post('/api/server/start', (req, res) => {
       // Logic to start server monitoring
       this.startMetricsEmission();
@@ -61,7 +159,7 @@ class App {
       res.json({ status: 'stopped' });
     });
 
-    // Basic health check endpoint
+    // Basic health check endpoint (this will be overridden by StreamingServer if it has one)
     this.app.get('/health', (req, res) => {
       res.json({ status: 'OK', timestamp: new Date().toISOString() });
     });
@@ -174,6 +272,25 @@ class App {
       console.log('  - GET /download/:filename - Download files');
       console.log('  - GET /stream/:streamId/playlist.m3u8 - HLS playlist');
       console.log('  - GET /stream/:streamId/:segment - HLS segments');
+      
+      if (this.config.enableDefense) {
+        console.log('  - GET /security/metrics - Defense metrics');
+        console.log('  - GET /security/status - Defense status');
+        console.log('');
+        console.log('🛡️ Defense System Status:');
+        console.log(`   Mode: ${this.config.defenseMode.toUpperCase()}`);
+        console.log('   Protection: ACTIVE');
+        console.log('');
+        console.log('🧪 Test defense system:');
+        console.log(`   curl -H "X-Simulate-Attack: optimistic-ack" http://localhost:${port}/download/xl.dat`);
+      } else {
+        console.log('');
+        console.log('⚠️  SECURITY WARNING:');
+        console.log('   Defense system is DISABLED');
+        console.log('   Server is vulnerable to optimistic ACK attacks');
+        console.log('   Use --defense true to enable protection');
+      }
+      
       console.log('  - POST /api/server/start - Start monitoring');
       console.log('  - POST /api/server/stop - Stop monitoring');
       
@@ -192,9 +309,21 @@ class App {
   }
 }
 
-// Auto-start the server
-const app = new App();
-const port = process.env.PORT ? parseInt(process.env.PORT) : 3001;
+// Auto-start the server with parsed arguments
+const cliArgs = parseArgs();
+
+if (cliArgs.help) {
+  showHelp();
+  process.exit(0);
+}
+
+const serverConfig: StreamingServerConfig = {
+  enableDefense: cliArgs.defense,
+  defenseMode: cliArgs.defenseMode
+};
+
+const app = new App(serverConfig);
+const port = cliArgs.port;
 
 app.start(port);
 

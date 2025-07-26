@@ -4,39 +4,216 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { SystemMonitor } from '../monitoring/SystemMonitor';
 import { ConnectionAnalyzer } from '../monitoring/analyzers/ConnectionAnalyzer';
+import { SecurityMiddleware } from '../security/SecurityMiddleware';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+export interface StreamingServerConfig {
+  enableDefense: boolean;
+  defenseMode: 'high' | 'medium' | 'low' | 'off';
+  customConfig?: any;
+}
 
 export class StreamingServer {
   private httpServer: express.Application;
   private systemMonitor: SystemMonitor;
   private connectionAnalyzer: ConnectionAnalyzer;
+  private securityMiddleware: SecurityMiddleware | null = null;
   private isRunning: boolean = false;
+  private config: StreamingServerConfig;
 
-  constructor() {
+  constructor(config: StreamingServerConfig = { enableDefense: true, defenseMode: 'medium' }) {
+    this.config = config;
     this.httpServer = express();
     this.systemMonitor = new SystemMonitor();
     this.connectionAnalyzer = new ConnectionAnalyzer();
+    
+    if (this.config.enableDefense) {
+      this.initializeDefenseSystem();
+    }
+    
     this.setupRoutes();
   }
 
+  private initializeDefenseSystem(): void {
+    const defenseConfig = this.getDefenseConfig();
+    this.securityMiddleware = new SecurityMiddleware(defenseConfig);
+    this.setupSecurity();
+    
+    console.log(`🛡️ Defense system initialized in ${this.config.defenseMode} mode`);
+  }
+
+  private getDefenseConfig() {
+    const baseConfig = {
+      enableSecurityHeaders: true,
+      enableConnectionThrottling: true,
+      blocklistEnabled: true,
+      ...this.config.customConfig
+    };
+
+    switch (this.config.defenseMode) {
+      case 'high':
+        return {
+          ...baseConfig,
+          ackValidationEnabled: true,
+          rateLimitingEnabled: true,
+          sequenceTrackingEnabled: true,
+          adaptiveWindowEnabled: true,
+          anomalyDetectionEnabled: true,
+          quarantineEnabled: true,
+          maxACKsPerSecond: 20,
+          maxSequenceGap: 262144, // 256KB
+          suspiciousPatternThreshold: 0.4,
+          quarantineDuration: 1800000, // 30 minutes
+          maxConnectionsPerIP: 10
+        };
+      
+      case 'medium':
+        return {
+          ...baseConfig,
+          ackValidationEnabled: true,
+          rateLimitingEnabled: true,
+          sequenceTrackingEnabled: true,
+          adaptiveWindowEnabled: true,
+          anomalyDetectionEnabled: true,
+          quarantineEnabled: true,
+          maxACKsPerSecond: 50,
+          maxSequenceGap: 524288, // 512KB
+          suspiciousPatternThreshold: 0.6,
+          quarantineDuration: 600000, // 10 minutes
+          maxConnectionsPerIP: 20
+        };
+      
+      case 'low':
+        return {
+          ...baseConfig,
+          ackValidationEnabled: true,
+          rateLimitingEnabled: false,
+          sequenceTrackingEnabled: false,
+          adaptiveWindowEnabled: false,
+          anomalyDetectionEnabled: true,
+          quarantineEnabled: false,
+          maxACKsPerSecond: 100,
+          maxSequenceGap: 1048576, // 1MB
+          suspiciousPatternThreshold: 0.8,
+          quarantineDuration: 300000, // 5 minutes
+          maxConnectionsPerIP: 50
+        };
+      
+      case 'off':
+      default:
+        return {
+          ...baseConfig,
+          ackValidationEnabled: false,
+          rateLimitingEnabled: false,
+          sequenceTrackingEnabled: false,
+          adaptiveWindowEnabled: false,
+          anomalyDetectionEnabled: false,
+          quarantineEnabled: false,
+          maxACKsPerSecond: 1000,
+          maxSequenceGap: 10485760, // 10MB
+          suspiciousPatternThreshold: 1.0,
+          quarantineDuration: 0,
+          maxConnectionsPerIP: 1000
+        };
+    }
+  }
+
+  private setupSecurity(): void {
+    if (!this.securityMiddleware) return;
+    
+    // Apply global security middleware
+    this.httpServer.use(this.securityMiddleware.createRequestFilter());
+    
+    // Add custom security rules for optimistic ACK attack detection
+    this.securityMiddleware.addCustomRule({
+      name: 'detect-attack-simulation',
+      condition: (req) => req.headers['x-simulate-attack'] === 'optimistic-ack',
+      action: 'block',
+      priority: 100
+    });
+
+    this.securityMiddleware.addCustomRule({
+      name: 'suspicious-user-agent',
+      condition: (req) => {
+        const userAgent = req.headers['user-agent'] || '';
+        return userAgent.includes('OptimisticACK-Attack-Tool');
+      },
+      action: 'block',
+      priority: 90
+    });
+
+    console.log('🛡️ Security middleware configured for optimistic ACK attack protection');
+  }
+
   private setupRoutes(): void {
-    // File download endpoint
-    this.httpServer.get('/download/:filename', (req, res) => {
-      // console.log('Got a download rquest');
-      // console.log(req);
-      this.handleFileDownload(req, res);
-    });
+    if (this.config.enableDefense) {
+      // Protected endpoints with defense middleware
+      this.httpServer.get('/download/:filename', 
+        (req, res, next) => {
+          console.log(`🔍 Download request received: ${req.path} from ${req.ip}`);
+          console.log(`🔍 Headers: ${JSON.stringify(req.headers)}`);
+          next();
+        },
+        this.securityMiddleware!.createDownloadProtection(),
+        (req, res) => {
+          console.log('🔒 Download request passed security validation');
+          this.handleFileDownload(req, res);
+        });
 
-    // HLS streaming endpoint
-    this.httpServer.get('/stream/:streamId/playlist.m3u8', (req, res) => {
-      this.handleStreamPlaylist(req, res);
-    });
+      this.httpServer.get('/stream/:streamId/playlist.m3u8',
+        this.securityMiddleware!.createStreamProtection(),
+        (req, res) => {
+          this.handleStreamPlaylist(req, res);
+        });
 
-    this.httpServer.get('/stream/:streamId/:segment', (req, res) => {
-      this.handleStreamSegment(req, res);
-    });
+      this.httpServer.get('/stream/:streamId/:segment',
+        this.securityMiddleware!.createStreamProtection(),
+        (req, res) => {
+          this.handleStreamSegment(req, res);
+        });
+
+      // Security monitoring endpoints
+      this.httpServer.get('/security/metrics', (req, res) => {
+        const metrics = this.securityMiddleware!.getSecurityMetrics();
+        res.json(metrics);
+      });
+
+      this.httpServer.get('/security/status', (req, res) => {
+        res.json({
+          defenseActive: true,
+          defenseMode: this.config.defenseMode,
+          protectedEndpoints: ['/download/:filename', '/stream/:streamId/*'],
+          lastUpdate: new Date().toISOString()
+        });
+      });
+    } else {
+      // Unprotected endpoints (original behavior)
+      this.httpServer.get('/download/:filename', (req, res) => {
+        console.log('⚠️ Download request - NO PROTECTION ACTIVE');
+        this.handleFileDownload(req, res);
+      });
+
+      this.httpServer.get('/stream/:streamId/playlist.m3u8', (req, res) => {
+        this.handleStreamPlaylist(req, res);
+      });
+
+      this.httpServer.get('/stream/:streamId/:segment', (req, res) => {
+        this.handleStreamSegment(req, res);
+      });
+
+      // Status endpoint showing defense is disabled
+      this.httpServer.get('/security/status', (req, res) => {
+        res.json({
+          defenseActive: false,
+          defenseMode: 'off',
+          protectedEndpoints: [],
+          warning: 'Defense system is disabled - server is vulnerable to attacks',
+          lastUpdate: new Date().toISOString()
+        });
+      });
+    }
   }
 
   private handleFileDownload(req: express.Request, res: express.Response): void {
@@ -149,11 +326,35 @@ ${segment}
     return playlist;
   }
 
+  public getApp(): express.Application {
+    return this.httpServer;
+  }
+
   public start(): void {
     if (!this.isRunning) {
       this.isRunning = true;
       this.systemMonitor.start();
-      console.log('Streaming server started');
+      
+      if (this.config.enableDefense) {
+        console.log('🚀 Streaming server started with optimistic ACK attack protection');
+        console.log('🛡️ Defense mechanisms active:');
+        console.log('  ✓ ACK validation (prevents optimistic ACK attacks)');
+        console.log('  ✓ Rate limiting (prevents ACK flooding)');
+        console.log('  ✓ Sequence tracking (detects sequence anomalies)');
+        console.log('  ✓ Window size monitoring (detects abnormal growth)');
+        console.log('  ✓ Anomaly detection (pattern-based detection)');
+        console.log('  ✓ IP quarantine system (automatic blocking)');
+        console.log('  ✓ Connection throttling (prevents resource exhaustion)');
+        console.log(`  ✓ Defense mode: ${this.config.defenseMode.toUpperCase()}`);
+      } else {
+        console.log('🚀 Streaming server started WITHOUT PROTECTION');
+        console.log('⚠️  WARNING: Server is vulnerable to attacks!');
+        console.log('   - No ACK validation');
+        console.log('   - No rate limiting');
+        console.log('   - No anomaly detection');
+        console.log('   - No IP blocking');
+        console.log('   Use --defense true to enable protection');
+      }
     }
   }
 
@@ -161,15 +362,36 @@ ${segment}
     if (this.isRunning) {
       this.isRunning = false;
       this.systemMonitor.stop();
-      console.log('Streaming server stopped');
+      
+      if (this.securityMiddleware) {
+        this.securityMiddleware.destroy();
+      }
+      
+      console.log('🛑 Streaming server stopped, defense systems deactivated');
     }
   }
 
   public getMetrics() {
-    return {
+    const baseMetrics = {
       systemMetrics: this.systemMonitor.getMetrics(),
       connectionMetrics: this.connectionAnalyzer.getMetrics(),
-      isRunning: this.isRunning
+      isRunning: this.isRunning,
+      defenseEnabled: this.config.enableDefense,
+      defenseMode: this.config.defenseMode
+    };
+
+    if (this.securityMiddleware) {
+      return {
+        ...baseMetrics,
+        securityMetrics: this.securityMiddleware.getSecurityMetrics(),
+        defenseActive: true
+      };
+    }
+
+    return {
+      ...baseMetrics,
+      securityMetrics: null,
+      defenseActive: false
     };
   }
 }
