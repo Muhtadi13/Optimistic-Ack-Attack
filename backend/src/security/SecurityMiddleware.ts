@@ -112,11 +112,11 @@ export class SecurityMiddleware {
       }
 
       // Only check for explicit attack indicators, not general rules
-      const attackDetected = this.detectExplicitAttack(req);
-      if (attackDetected) {
-        console.log(`🚨 ATTACK DETECTED from ${clientIP}: ${attackDetected.reason}`);
-        return this.sendSecurityResponse(res, 403, `Attack blocked: ${attackDetected.reason}`);
-      }
+      // const attackDetected = this.detectExplicitAttack(req);
+      // if (attackDetected) {
+      //   console.log(`🚨 ATTACK DETECTED from ${clientIP}: ${attackDetected.reason}`);
+      //   return this.sendSecurityResponse(res, 403, `Attack blocked: ${attackDetected.reason}`);
+      // }
 
       next();
     };

@@ -535,11 +535,12 @@ export class OptimisticACKAttacker {
       // During attack, coordinate with ACK timing
       if (duringAttack && this.isAttackActive) {
         // Very aggressive - minimal delay to maximize benefit from optimistic ACKs
-        await this.delay(Math.max(this.config.packetInterval / 8, 5));
+        await this.delay(Math.max(this.config.packetInterval / 1.3, 5));
       } else {
         // Baseline transfer - much slower to create contrast
-        await this.delay(Math.max(this.config.packetInterval * 4, 100));
+        await this.delay(this.config.packetInterval);
       }
+      // await this.delay(this.config.packetInterval);
     }
   }
 
