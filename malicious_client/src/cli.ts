@@ -133,7 +133,7 @@ export class AttackCLI {
         type: 'number',
         name: 'packetInterval',
         message: 'Packet Interval (ms):',
-        default: transferConfig.transferType === 'streaming' ? 20 : 45, // Faster for streaming
+        default: transferConfig.transferType === 'streaming' ? 25 : 50, // Faster for streaming
         validate: (input) => input > 0 || 'Interval must be positive'
       },
       {
@@ -184,7 +184,7 @@ export class AttackCLI {
         targetHost: '127.0.0.1',
         targetPort: 3001,
         attackDuration: 45,
-        packetInterval: 45,
+        packetInterval: 50,
         ackAdvanceSize: 8760,
         windowScale: 2.0,
         enableTransfer: true,
@@ -202,7 +202,7 @@ export class AttackCLI {
         targetHost: '127.0.0.1',
         targetPort: 3001,
         attackDuration: 90,
-        packetInterval: 20,
+        packetInterval: 25,
         ackAdvanceSize: 17520,
         windowScale: 3.0,
         enableTransfer: true,
