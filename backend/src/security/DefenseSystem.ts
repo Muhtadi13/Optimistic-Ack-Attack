@@ -129,8 +129,11 @@ export class DefenseSystem extends EventEmitter {
   ): { allowed: boolean; action?: DefenseAction } {
     const connectionId = `${state.ip}:${state.port}`;
 
-    // 1. ACK Validation - Detect optimistic ACKs
-    if (this.config.ackValidationEnabled && flags.includes('ACK')) {
+    // Skip strict checks for connections that haven't shown attack patterns
+    const isLikelyAttack = state.suspicious || state.anomalyScore > 0.5;
+
+    // 1. ACK Validation - Only apply strict validation to suspicious connections
+    if (this.config.ackValidationEnabled && flags.includes('ACK') && isLikelyAttack) {
       const ackValidation = this.validateACKNumber(state, ack);
       if (!ackValidation.valid) {
         this.updateAnomalyScore(state, 0.3);
@@ -141,7 +144,7 @@ export class DefenseSystem extends EventEmitter {
       }
     }
 
-    // 2. Rate Limiting - Prevent ACK flooding
+    // 2. Rate Limiting - Apply to all ACK packets but with permissive limits
     if (this.config.rateLimitingEnabled && flags.includes('ACK')) {
       const rateLimitCheck = this.checkACKRateLimit(state);
       if (!rateLimitCheck.allowed) {
@@ -202,21 +205,26 @@ export class DefenseSystem extends EventEmitter {
   }
 
   private validateACKNumber(state: ConnectionState, ack: number): { valid: boolean; reason: string } {
-    // Check for optimistic ACK (acknowledging data not yet sent)
+    // For HTTP traffic, ACK validation should be much more permissive
+    // Only block extremely suspicious patterns that indicate active packet injection
+    
     const ackAdvance = ack - state.lastValidAck;
     
-    if (ackAdvance > this.config.maxSequenceGap) {
+    // Allow normal HTTP ACK behavior - only flag massive advances that indicate attack
+    const suspiciousAdvanceThreshold = this.config.maxSequenceGap * 2; // Double the normal threshold
+    
+    if (ackAdvance > suspiciousAdvanceThreshold) {
       return {
         valid: false,
-        reason: `Optimistic ACK detected: advancing ${ackAdvance} bytes beyond expected`
+        reason: `Highly suspicious ACK detected: advancing ${ackAdvance} bytes beyond expected (threshold: ${suspiciousAdvanceThreshold})`
       };
     }
 
-    // Check for ACK going backwards (potential replay attack)
-    if (ack < state.lastValidAck && state.lastValidAck > 0) {
+    // Check for ACK going backwards (potential replay attack) - but allow some flexibility
+    if (ack < state.lastValidAck - 1024 && state.lastValidAck > 1024) { // Allow 1KB tolerance
       return {
         valid: false,
-        reason: `ACK number regression detected: ${ack} < ${state.lastValidAck}`
+        reason: `Significant ACK regression detected: ${ack} << ${state.lastValidAck}`
       };
     }
 
@@ -235,10 +243,13 @@ export class DefenseSystem extends EventEmitter {
 
     state.ackCount++;
 
-    if (state.ackCount > this.config.maxACKsPerSecond) {
+    // Be much more permissive for HTTP traffic - only block extreme flooding
+    const effectiveLimit = this.config.maxACKsPerSecond * 3; // 3x more permissive
+    
+    if (state.ackCount > effectiveLimit) {
       return {
         allowed: false,
-        reason: `ACK rate limit exceeded: ${state.ackCount} ACKs/second`
+        reason: `Extreme ACK rate limit exceeded: ${state.ackCount} ACKs/second (limit: ${effectiveLimit})`
       };
     }
 
@@ -486,6 +497,34 @@ export class DefenseSystem extends EventEmitter {
 
   public getConnectionState(ip: string, port: number): ConnectionState | null {
     return this.connectionStates.get(`${ip}:${port}`) || null;
+  }
+
+  /**
+   * Mark a connection as suspicious based on application-layer detection
+   */
+  public markConnectionSuspicious(ip: string, port: number, reason: string): void {
+    const state = this.getOrCreateConnectionState(ip, port);
+    state.suspicious = true;
+    state.anomalyScore = Math.min(1.0, state.anomalyScore + 0.5);
+    
+    console.log(`🚨 Connection ${ip}:${port} marked as suspicious: ${reason}`);
+    
+    // Emit a defense action for logging
+    this.emit('defenseAction', this.createDefenseAction(
+      'alert',
+      `Connection marked suspicious: ${reason}`,
+      'medium',
+      `${ip}:${port}`
+    ));
+  }
+
+  /**
+   * Check if a connection is marked as suspicious
+   */
+  public isConnectionSuspicious(ip: string, port: number): boolean {
+    const connectionId = `${ip}:${port}`;
+    const state = this.connectionStates.get(connectionId);
+    return state ? state.suspicious : false;
   }
 
   public destroy(): void {

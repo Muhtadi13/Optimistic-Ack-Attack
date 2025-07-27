@@ -38,8 +38,8 @@ export class SecurityMiddleware {
   constructor(config: Partial<SecurityConfig> = {}) {
     this.config = {
       enableSecurityHeaders: true,
-      enableConnectionThrottling: true,
-      maxConnectionsPerIP: 100, // Increased for legitimate use
+      enableConnectionThrottling: false, // Disable for legitimate users
+      maxConnectionsPerIP: 500, // Much higher for legitimate streaming/downloading
       blocklistEnabled: true,
       customRules: [],
       // Defense system defaults - more permissive for legitimate traffic
@@ -98,9 +98,16 @@ export class SecurityMiddleware {
 
       // Connection throttling - only for excessive connections
       if (this.config.enableConnectionThrottling) {
-        const allowed = this.checkConnectionLimit(clientIP);
-        if (!allowed) {
-          return this.sendSecurityResponse(res, 429, 'Too many simultaneous connections from this IP');
+        // Skip connection throttling for legitimate clients (they've been whitelisted)
+        const userAgent = req.headers['user-agent'] || '';
+        if (!this.isLegitimateClient(userAgent)) {
+          // Only apply connection limits to non-legitimate clients
+          const allowed = this.checkConnectionLimit(clientIP);
+          if (!allowed) {
+            return this.sendSecurityResponse(res, 429, 'Too many simultaneous connections from this IP');
+          }
+        } else {
+          console.log(`🔓 Skipping connection limit for legitimate client: ${clientIP}`);
         }
       }
 
@@ -129,7 +136,7 @@ export class SecurityMiddleware {
         return this.sendSecurityResponse(res, 403, 'Access denied: IP blocked due to previous attack');
       }
 
-      // Only check for explicit attack indicators
+      // For downloads, only check for explicit attack indicators (no connection limits)
       const attackDetected = this.detectExplicitAttack(req);
       if (attackDetected) {
         console.log(`🚨 DOWNLOAD ATTACK DETECTED from ${clientIP}: ${attackDetected.reason}`);
@@ -139,7 +146,7 @@ export class SecurityMiddleware {
       // Track large downloads for monitoring (but don't block)
       this.trackResponse(res, clientIP);
 
-      console.log(`✅ Download request from ${clientIP} approved`);
+      console.log(`✅ Download request from ${clientIP} approved (no connection limits for downloads)`);
       next();
     };
   }
@@ -162,14 +169,14 @@ export class SecurityMiddleware {
         return this.sendSecurityResponse(res, 400, streamValidation.reason);
       }
 
-      // Check for explicit attacks
+      // Check for explicit attacks (no connection limits for streaming)
       const attackDetected = this.detectExplicitAttack(req);
       if (attackDetected) {
         console.log(`🚨 STREAMING ATTACK DETECTED from ${clientIP}: ${attackDetected.reason}`);
         return this.sendSecurityResponse(res, 403, `Attack blocked: ${attackDetected.reason}`);
       }
 
-      console.log(`✅ Streaming request from ${clientIP} approved`);
+      console.log(`✅ Streaming request from ${clientIP} approved (no connection limits for streaming)`);
       next();
     };
   }
@@ -178,17 +185,37 @@ export class SecurityMiddleware {
    * Detect explicit attack indicators - this is the key method
    */
   private detectExplicitAttack(req: express.Request): { reason: string } | null {
+    const userAgent = req.headers['user-agent'] || '';
+    
+    // WHITELIST APPROACH: Allow known legitimate browsers first
+    if (this.isLegitimateClient(userAgent)) {
+      const clientIP = this.getClientIP(req);
+      console.log(`✅ Legitimate client detected from ${clientIP}: ${userAgent}`);
+      return null; // Always allow legitimate browsers
+    }
+    
     // 1. Check for explicit attack simulation headers
     if (req.headers['x-simulate-attack'] === 'optimistic-ack') {
       return { reason: 'Explicit optimistic ACK attack simulation detected' };
     }
 
-    // 2. Check for malicious user agents (actual attack tools)
-    const userAgent = req.headers['user-agent'] || '';
-    if (userAgent.includes('OptimisticACK-Attack-Tool') || 
-        userAgent.includes('malicious') || 
-        userAgent.includes('exploit')) {
-      return { reason: 'Malicious user agent detected' };
+    // 2. Check for malicious user agents (ONLY actual attack tools)
+    const maliciousAgents = [
+      'OptimisticACK-Attack-Tool',
+      'OptimisticACK-HLS-Client', // Our attack client
+      'exploit-framework',
+      'attack-simulator'
+    ];
+    
+    for (const maliciousAgent of maliciousAgents) {
+      if (userAgent.includes(maliciousAgent)) {
+        // Mark this connection as suspicious in the defense system
+        const clientIP = this.getClientIP(req);
+        const clientPort = parseInt(req.headers['x-forwarded-port'] as string) || 0;
+        this.defenseSystem.markConnectionSuspicious(clientIP, clientPort, `Malicious user agent: ${maliciousAgent}`);
+        
+        return { reason: `Malicious user agent detected: ${maliciousAgent}` };
+      }
     }
 
     // 3. Check for suspicious request patterns (actual attack behavior)
@@ -206,8 +233,8 @@ export class SecurityMiddleware {
     }
 
     // 4. Check for rapid-fire requests (potential ACK flooding simulation)
-    const clientIP = this.getClientIP(req);
-    if (this.isRapidFireRequest(clientIP)) {
+    const requestIP = this.getClientIP(req);
+    if (this.isRapidFireRequest(requestIP)) {
       return { reason: 'Rapid-fire request pattern detected (potential ACK flood)' };
     }
 
@@ -221,6 +248,45 @@ export class SecurityMiddleware {
 
     // Allow all other requests (including legitimate frontend requests)
     return null;
+  }
+
+  /**
+   * Check if the user agent represents a legitimate browser or client
+   */
+  private isLegitimateClient(userAgent: string): boolean {
+    const legitimateAgents = [
+      'Mozilla/',        // All major browsers
+      'Chrome/',         // Chrome/Chromium
+      'Safari/',         // Safari
+      'Firefox/',        // Firefox
+      'Edge/',           // Microsoft Edge
+      'Opera/',          // Opera
+      'curl/',           // cURL (legitimate tool)
+      'wget/',           // wget (legitimate tool)
+      'Node.js',         // Node.js HTTP client
+      'axios/',          // Axios library
+      'okhttp/',         // OkHttp library
+      'Python-urllib',   // Python urllib
+      'java/',           // Java HTTP clients
+      'Go-http-client',  // Go HTTP client
+      'libcurl',         // libcurl library
+      'Postman',         // Postman API client
+      'Insomnia'         // Insomnia API client
+    ];
+
+    // Check if user agent contains any legitimate client identifier
+    for (const legit of legitimateAgents) {
+      if (userAgent.includes(legit)) {
+        return true;
+      }
+    }
+
+    // If no user agent, allow (some legitimate clients don't send user agent)
+    if (!userAgent || userAgent.trim().length === 0) {
+      return true;
+    }
+
+    return false;
   }
 
   private isRapidFireRequest(ip: string): boolean {
@@ -311,20 +377,30 @@ export class SecurityMiddleware {
   private checkConnectionLimit(ip: string): boolean {
     const currentConnections = this.connectionCounts.get(ip) || 0;
     
-    if (currentConnections >= this.config.maxConnectionsPerIP) {
-      console.log(`⚠️ Connection limit exceeded for ${ip}: ${currentConnections}/${this.config.maxConnectionsPerIP}`);
-      return false;
+    // Be much more permissive for localhost/development
+    if (ip === '127.0.0.1' || ip === '::1' || ip === 'localhost') {
+      const devLimit = this.config.maxConnectionsPerIP * 10; // 10x higher for localhost
+      if (currentConnections >= devLimit) {
+        console.log(`⚠️ Development connection limit exceeded for ${ip}: ${currentConnections}/${devLimit}`);
+        return false;
+      }
+    } else {
+      // Normal limit for external IPs
+      if (currentConnections >= this.config.maxConnectionsPerIP) {
+        console.log(`⚠️ Connection limit exceeded for ${ip}: ${currentConnections}/${this.config.maxConnectionsPerIP}`);
+        return false;
+      }
     }
 
     this.connectionCounts.set(ip, currentConnections + 1);
     
-    // Decrement after connection completes
+    // Shorter connection window for quicker cleanup
     setTimeout(() => {
       const count = this.connectionCounts.get(ip) || 0;
       if (count > 0) {
         this.connectionCounts.set(ip, count - 1);
       }
-    }, 10000); // 10 second connection window
+    }, 2000); // 2 second connection window instead of 10
 
     return true;
   }
